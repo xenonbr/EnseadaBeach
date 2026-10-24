@@ -27,6 +27,9 @@ function friendly(m: string): string {
   if (m.includes("CANCELAMENTO_PREPARO_RESTRITO")) {
     return "Pedidos já em preparo só podem ser cancelados por gerente ou administrador.";
   }
+  if (m.includes("PEDIDO_AINDA_NAO_PRONTO")) {
+    return "O pedido só pode ser marcado como entregue quando todos os setores concluírem o preparo.";
+  }
   if (m.includes("SEM_PERMISSAO")) {
     return "Você não tem permissão para executar esta ação.";
   }
@@ -79,4 +82,44 @@ export async function cancelOrderAction(formData: FormData) {
   revalidatePath("/admin/pedidos");
   if (error) go(friendly(error.message));
   go("Pedido cancelado e registrado na auditoria.");
+}
+
+export async function deliverOrderAction(formData: FormData) {
+  const { supabase } = await requireStaff([...ROLES]);
+  const id = String(formData.get("id") ?? "");
+  const version = Number(formData.get("version") ?? 0);
+  if (!UUID.test(id)) go("Pedido inválido.");
+
+  const { error } = await supabase.rpc("mark_order_delivered", {
+    p_order_id: id,
+    p_expected_version: version || null,
+  });
+  revalidatePath("/admin/pedidos");
+  if (error) go(friendly(error.message));
+  go("Entrega registrada na mesa (lembrete: entrega não equivale a pagamento).");
+}
+
+export async function updateServiceCallAction(formData: FormData) {
+  const { supabase } = await requireStaff([...ROLES]);
+  const id = String(formData.get("id") ?? "");
+  const nextStatus = String(formData.get("status") ?? "");
+  const note = String(formData.get("note") ?? "").trim();
+  if (!UUID.test(id) || !["EM_ATENDIMENTO", "ATENDIDA", "CANCELADA"].includes(nextStatus)) {
+    go("Dados do chamado inválidos.");
+  }
+
+  const { error } = await supabase.rpc("update_service_call_status", {
+    p_call_id: id,
+    p_next_status: nextStatus,
+    p_note: note || null,
+  });
+  revalidatePath("/admin/pedidos");
+  if (error) go(friendly(error.message));
+  go(
+    nextStatus === "EM_ATENDIMENTO"
+      ? "Chamado assumido por você."
+      : nextStatus === "ATENDIDA"
+        ? "Chamado concluído."
+        : "Chamado cancelado.",
+  );
 }

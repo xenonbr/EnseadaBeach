@@ -182,6 +182,13 @@ export function TableOrderClient({
   const [myOrders, setMyOrders] = useState<MyOrder[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
+  // Estado do botão separado "Chamar atendente"
+  const [callModalOpen, setCallModalOpen] = useState(false);
+  const [callReason, setCallReason] = useState<"AJUDA" | "DUVIDA" | "PEDIR_CONTA" | "OUTRO">("AJUDA");
+  const [callDetails, setCallDetails] = useState("");
+  const [callingAttendant, setCallingAttendant] = useState(false);
+  const [callFeedback, setCallFeedback] = useState<string | null>(null);
+
   const saveCart = useCallback(
     (next: CartItem[]) => {
       setCart(next);
@@ -362,6 +369,126 @@ export function TableOrderClient({
 
   return (
     <div className="flex flex-col gap-6 text-left">
+      {canOrder && (
+        <section className="card flex flex-wrap items-center justify-between gap-3 bg-white">
+          <div>
+            <strong className="block text-ocean">Precisa de atendimento presencial?</strong>
+            <span className="text-xs text-slate-700">
+              Chame um atendente para tirar dúvidas, pedir apoio ou solicitar o fechamento da conta.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setCallModalOpen(true);
+              setCallFeedback(null);
+            }}
+            className="btn border-ocean text-ocean"
+          >
+            Chamar atendente
+          </button>
+        </section>
+      )}
+
+      {callFeedback && (
+        <section role="status" className="rounded-2xl border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950">
+          {callFeedback}
+        </section>
+      )}
+
+      {callModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="call-title"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+        >
+          <div className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl">
+            <h2 id="call-title" className="text-xl font-bold text-ocean">
+              Chamar atendente na mesa
+            </h2>
+            <p className="mt-1 text-xs text-slate-700">
+              Esta chamada avisa a equipe de atendimento (não envia pedido de produtos nem realiza pagamento).
+            </p>
+            <div className="mt-4 flex flex-col gap-3">
+              <label className="flex flex-col gap-1 font-medium">
+                Motivo
+                <select
+                  value={callReason}
+                  onChange={(e) =>
+                    setCallReason(e.target.value as "AJUDA" | "DUVIDA" | "PEDIR_CONTA" | "OUTRO")
+                  }
+                  className="input"
+                >
+                  <option value="AJUDA">Preciso de ajuda na mesa</option>
+                  <option value="DUVIDA">Dúvida sobre o cardápio</option>
+                  <option value="PEDIR_CONTA">Pedir a conta para conferência</option>
+                  <option value="OUTRO">Outro motivo</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 font-medium">
+                Observação curta (opcional)
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={callDetails}
+                  onChange={(e) => setCallDetails(e.target.value)}
+                  placeholder="Ex.: trazer guardanapos"
+                  className="input"
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCallModalOpen(false)}
+                className="btn flex-1"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={callingAttendant}
+                onClick={async () => {
+                  if (callingAttendant) return;
+                  setCallingAttendant(true);
+                  try {
+                    const supabase = createClient();
+                    const { data, error } = await supabase.rpc("create_service_call", {
+                      p_table_token: tableToken,
+                      p_client_token: clientToken,
+                      p_reason: callReason,
+                      p_details: callDetails.trim() || null,
+                    });
+                    if (error) {
+                      setCallFeedback(
+                        error.message.includes("AGUARDE_PARA_NOVA_CHAMADA")
+                          ? "Recebemos sua chamada há instantes. Aguarde alguns segundos antes de enviar outra."
+                          : "Não foi possível enviar o chamado agora. Tente novamente.",
+                      );
+                    } else {
+                      const res = data as { already_open?: boolean };
+                      setCallFeedback(
+                        res?.already_open
+                          ? "Já existe um chamado aberto para sua mesa. Um atendente virá em instantes!"
+                          : "Chamado enviado! Um atendente foi avisado e virá até sua mesa.",
+                      );
+                      setCallDetails("");
+                    }
+                    setCallModalOpen(false);
+                  } finally {
+                    setCallingAttendant(false);
+                  }
+                }}
+                className="btn btn-primary flex-1"
+              >
+                {callingAttendant ? "Chamando..." : "Confirmar chamada"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {lastPlacedMsg && (
         <section role="status" className="rounded-2xl border-2 border-turquoise bg-sky-50 p-4 text-sky-950">
           <p className="font-bold">Pedido recebido — aguardando confirmação presencial</p>

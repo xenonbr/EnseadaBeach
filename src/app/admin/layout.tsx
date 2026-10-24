@@ -17,6 +17,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const { profile } = await requireStaff();
   const canManage = profile.role === "admin" || profile.role === "manager";
   const canTables = canManage || profile.role === "attendant";
+  const canKitchen = canTables || profile.role === "kitchen";
+  const canBar = canTables || profile.role === "bar";
   return (
     <div className="min-h-screen md:grid md:grid-cols-[16rem_1fr]">
       <aside className="sticky top-0 z-10 flex flex-col gap-3 bg-ocean p-3 text-white md:h-screen md:gap-6 md:p-5">
@@ -30,6 +32,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <nav aria-label="Principal" className="-mx-1 flex gap-1 overflow-x-auto px-1 md:flex-col">
           <NavLink href="/admin" exact>Início</NavLink>
           {canTables && <NavLink href="/admin/pedidos">Pedidos</NavLink>}
+          {canKitchen && <NavLink href="/admin/cozinha">Cozinha</NavLink>}
+          {canBar && <NavLink href="/admin/bar">Bar</NavLink>}
           {canTables && <NavLink href="/admin/mesas">Mesas</NavLink>}
           {canManage && <NavLink href="/admin/cardapio">Cardápio</NavLink>}
         </nav>

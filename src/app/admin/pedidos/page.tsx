@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { formatCents } from "@/lib/money";
-import { cancelOrderAction, claimVerification, confirmOrderPresencial } from "./actions";
+import { RealtimeRefresh } from "@/components/RealtimeRefresh";
+import {
+  cancelOrderAction,
+  claimVerification,
+  confirmOrderPresencial,
+  deliverOrderAction,
+  updateServiceCallAction,
+} from "./actions";
 
 const STATUS_LABEL: Record<string, string> = {
   AGUARDANDO_CONFIRMACAO: "Aguardando confirmação",
@@ -12,6 +19,23 @@ const STATUS_LABEL: Record<string, string> = {
   PRONTO: "Pronto para entrega",
   ENTREGUE: "Entregue",
   CANCELADO: "Cancelado",
+};
+
+const CALL_REASON_LABEL: Record<string, string> = {
+  AJUDA: "Precisa de ajuda",
+  DUVIDA: "Dúvida sobre cardápio",
+  PEDIR_CONTA: "Pedir a conta",
+  OUTRO: "Outro motivo",
+};
+
+type ServiceCallRow = {
+  id: string;
+  reason: string;
+  details: string | null;
+  status: "PENDENTE" | "EM_ATENDIMENTO";
+  handled_by: string | null;
+  created_at: string;
+  dining_tables: { display_name: string } | null;
 };
 
 type OrderRow = {
@@ -59,29 +83,43 @@ export default async function PedidosAdminPage({
 
   if (f === "verificacao") {
     query = query.in("status", ["AGUARDANDO_CONFIRMACAO", "EM_VERIFICACAO"]);
+  } else if (f === "prontos") {
+    query = query.eq("status", "PRONTO");
   } else if (f === "ativos") {
     query = query.in("status", ["CONFIRMADO", "EM_PREPARACAO", "PARCIALMENTE_PRONTO", "PRONTO"]);
   }
 
-  const [{ data, error }, { data: serverTime }] = await Promise.all([
+  const [{ data, error }, { data: callsData }, { data: serverTime }] = await Promise.all([
     query.limit(100),
-    supabase.rpc("resolve_table", { p_token: "" }).then(() => ({ data: new Date().toISOString() })),
+    supabase
+      .from("service_calls")
+      .select("id, reason, details, status, handled_by, created_at, dining_tables(display_name)")
+      .in("status", ["PENDENTE", "EM_ATENDIMENTO"])
+      .order("created_at", { ascending: true }),
+    supabase
+      .rpc("resolve_table", { p_token: "" })
+      .then(() => ({ data: new Date().toISOString() })),
   ]);
+
   const orders = (data ?? []) as unknown as OrderRow[];
+  const calls = (callsData ?? []) as unknown as ServiceCallRow[];
   const nowMs = new Date(serverTime).getTime();
 
   return (
     <main className="flex flex-col gap-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold md:text-3xl">Pedidos e Confirmação Presencial</h1>
+          <h1 className="text-2xl font-bold md:text-3xl">Atendimento, Confirmação e Entrega</h1>
           <p className="text-slate-700">
             Nenhum pedido vai para a cozinha ou bar sem verificação presencial na mesa.
           </p>
         </div>
-        <Link href={`/admin/pedidos?f=${encodeURIComponent(f)}`} className="btn">
-          Atualizar fila
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <RealtimeRefresh tables={["orders", "production_tasks", "service_calls"]} />
+          <Link href={`/admin/pedidos?f=${encodeURIComponent(f)}`} className="btn">
+            Atualizar fila
+          </Link>
+        </div>
       </header>
 
       {msg && (
@@ -95,12 +133,76 @@ export default async function PedidosAdminPage({
         </p>
       )}
 
+      {/* Fila de chamados de atendente ("Chamar atendente") */}
+      {calls.length > 0 && (
+        <section
+          aria-label="Chamados de atendente ativos"
+          className="card border-2 border-gold bg-amber-50/60"
+        >
+          <h2 className="text-lg font-bold text-ocean">
+            Chamados de Mesa ({calls.length})
+          </h2>
+          <ul className="mt-3 grid gap-3 md:grid-cols-2">
+            {calls.map((c) => {
+              const waitMin = Math.max(
+                0,
+                Math.floor((nowMs - new Date(c.created_at).getTime()) / 60000),
+              );
+              return (
+                <li
+                  key={c.id}
+                  className="flex flex-col gap-2 rounded-xl border border-amber-400 bg-white p-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <strong className="text-base text-ocean">
+                      {c.dining_tables?.display_name ?? "Mesa"} —{" "}
+                      {CALL_REASON_LABEL[c.reason] ?? c.reason}
+                    </strong>
+                    <span className={`chip ${c.status === "PENDENTE" ? "chip-open" : "chip-on"}`}>
+                      {c.status === "PENDENTE" ? "Pendente" : "Em atendimento"} ({waitMin} min)
+                    </span>
+                  </div>
+                  {c.details && <p className="text-sm text-slate-700">Obs.: {c.details}</p>}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {c.status === "PENDENTE" && (
+                      <form action={updateServiceCallAction}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="status" value="EM_ATENDIMENTO" />
+                        <button className="btn h-9 px-3 text-sm">Assumir chamado</button>
+                      </form>
+                    )}
+                    <form action={updateServiceCallAction}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="status" value="ATENDIDA" />
+                      <button className="btn btn-primary h-9 px-3 text-sm">
+                        Marcar como atendido
+                      </button>
+                    </form>
+                    <form action={updateServiceCallAction} className="ml-auto">
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="status" value="CANCELADA" />
+                      <button className="btn h-9 px-3 text-xs">Cancelar</button>
+                    </form>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       <nav aria-label="Filtro de pedidos" className="flex flex-wrap gap-2">
         <Link
           href="/admin/pedidos?f=verificacao"
           className={`btn ${f === "verificacao" ? "btn-primary" : ""}`}
         >
-          Fila de Confirmação Presencial
+          1. Fila de Confirmação Presencial
+        </Link>
+        <Link
+          href="/admin/pedidos?f=prontos"
+          className={`btn ${f === "prontos" ? "btn-primary" : ""}`}
+        >
+          2. Prontos p/ Entrega
         </Link>
         <Link
           href="/admin/pedidos?f=ativos"
@@ -124,7 +226,10 @@ export default async function PedidosAdminPage({
 
       <ul className="grid gap-4 lg:grid-cols-2">
         {orders.map((o) => {
-          const waitMin = Math.max(0, Math.floor((nowMs - new Date(o.created_at).getTime()) / 60000));
+          const waitMin = Math.max(
+            0,
+            Math.floor((nowMs - new Date(o.created_at).getTime()) / 60000),
+          );
           const isPendingConfirm =
             o.status === "AGUARDANDO_CONFIRMACAO" || o.status === "EM_VERIFICACAO";
           const isDelayed = isPendingConfirm && waitMin >= 5;
@@ -177,7 +282,10 @@ export default async function PedidosAdminPage({
 
               <ul className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 text-sm">
                 {o.order_items.map((it) => (
-                  <li key={it.id} className="flex flex-col gap-0.5 border-b pb-2 last:border-b-0 last:pb-0">
+                  <li
+                    key={it.id}
+                    className="flex flex-col gap-0.5 border-b pb-2 last:border-b-0 last:pb-0"
+                  >
                     <div className="flex justify-between gap-2">
                       <strong>
                         {it.quantity}x {it.product_name_snapshot}{" "}
@@ -236,6 +344,16 @@ export default async function PedidosAdminPage({
                 </div>
               )}
 
+              {o.status === "PRONTO" && (
+                <form action={deliverOrderAction} className="pt-1">
+                  <input type="hidden" name="id" value={o.id} />
+                  <input type="hidden" name="version" value={o.version} />
+                  <button className="btn btn-primary w-full">
+                    Registrar entrega na mesa (concluir entrega)
+                  </button>
+                </form>
+              )}
+
               {o.status !== "CANCELADO" && o.status !== "ENTREGUE" && (
                 <details className="pt-1">
                   <summary className="cursor-pointer text-xs font-semibold text-red-700">
@@ -252,7 +370,9 @@ export default async function PedidosAdminPage({
                       aria-label="Motivo do cancelamento"
                       className="input min-w-0 flex-1 text-sm"
                     />
-                    <button className="btn border-red-600 text-red-700">Confirmar cancelamento</button>
+                    <button className="btn border-red-600 text-red-700">
+                      Confirmar cancelamento
+                    </button>
                   </form>
                 </details>
               )}
