@@ -101,8 +101,8 @@ describe("ativação, sessões e permissões", () => {
     expect(s.rows[0]).toEqual({ status: "closed", closed_by: ATT });
   });
   it("anônimo não lê tabelas nem escreve; resolve_table só expõe o mínimo", async () => {
-    const t = await as(null, "anon", "select count(*)::int c from dining_tables").catch(() => ({ rows: [{ c: 0 }] }));
-    expect(t.rows[0].c).toBe(0);
+    await expect(as(null, "anon", "select * from dining_tables")).rejects.toThrow(/permission denied/);
+    await expect(as(null, "anon", "select * from table_sessions")).rejects.toThrow(/permission denied/);
     const tok = (await db.query<any>("select public_token from dining_tables where display_name='Mesa 01'")).rows[0].public_token;
     const r = await as(null, "anon", `select * from resolve_table('${tok}')`);
     expect(Object.keys(r.rows[0]).sort()).toEqual(["active", "display_name", "has_open_session"]);

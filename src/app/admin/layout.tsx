@@ -37,6 +37,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           {canTables && <NavLink href="/admin/contas">Contas</NavLink>}
           {canTables && <NavLink href="/admin/mesas">Mesas</NavLink>}
           {canManage && <NavLink href="/admin/cardapio">Cardápio</NavLink>}
+          {canManage && <NavLink href="/admin/relatorios">Relatórios</NavLink>}
+          {canManage && <NavLink href="/admin/configuracoes">Site Público</NavLink>}
+          {profile.role === "admin" && <NavLink href="/admin/equipe">Equipe</NavLink>}
         </nav>
         <div className="mt-auto hidden flex-col gap-3 border-t border-white/25 pt-4 md:flex">
           <div>
