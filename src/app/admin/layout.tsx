@@ -34,6 +34,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           {canTables && <NavLink href="/admin/pedidos">Pedidos</NavLink>}
           {canKitchen && <NavLink href="/admin/cozinha">Cozinha</NavLink>}
           {canBar && <NavLink href="/admin/bar">Bar</NavLink>}
+          {canTables && <NavLink href="/admin/contas">Contas</NavLink>}
           {canTables && <NavLink href="/admin/mesas">Mesas</NavLink>}
           {canManage && <NavLink href="/admin/cardapio">Cardápio</NavLink>}
         </nav>

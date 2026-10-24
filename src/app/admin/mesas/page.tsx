@@ -98,6 +98,12 @@ export default async function MesasPage({ searchParams }: { searchParams: Promis
                 <Link href={`/admin/mesas/${t.id}/qr`} className="btn w-full">QR Code</Link>
               </div>
 
+              {open && (
+                <Link href={`/admin/contas/${open.id}`} className="btn border-ocean text-ocean w-full">
+                  Ver conta / recebimentos desta sessão
+                </Link>
+              )}
+
               <details>
                 <summary className="cursor-pointer text-sm font-semibold text-ocean">Renomear</summary>
                 <form action={renameTable} className="mt-2 flex gap-2">
