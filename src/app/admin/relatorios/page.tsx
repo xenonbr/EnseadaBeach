@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { formatCents } from "@/lib/money";
+import { purgeClosedHistoryAction } from "./actions";
 
 const VALID_STATUSES = new Set([
   "CONFIRMADO",
@@ -45,9 +46,10 @@ export default async function RelatoriosPage({
     mesa?: string;
     setor?: string;
     status?: string;
+    msg?: string;
   }>;
 }) {
-  const { supabase } = await requireStaff(["admin", "manager"]);
+  const { supabase, profile } = await requireStaff(["admin", "manager"]);
   const sp = await searchParams;
 
   const today = new Date().toISOString().slice(0, 10);
@@ -168,6 +170,12 @@ export default async function RelatoriosPage({
           </Link>
         )}
       </header>
+
+      {sp.msg && (
+        <p role="status" className="rounded-xl border border-sky-400 bg-sky-50 p-4 text-sky-950 font-medium">
+          {sp.msg}
+        </p>
+      )}
 
       {e1 && (
         <p role="alert" className="rounded-xl border border-red-400 bg-red-50 p-3 text-red-900">
@@ -319,6 +327,91 @@ export default async function RelatoriosPage({
           )}
         </section>
       </div>
+
+      {profile.role === "admin" && (
+        <section aria-label="Fechamento de Período e Limpeza de Base" className="card border-2 border-gold bg-amber-50/40 p-6 flex flex-col gap-4">
+          <div className="flex flex-col gap-1 border-b border-sand pb-3">
+            <span className="brand-tagline text-xs font-bold text-ocean">
+              Administração & Banco de Dados
+            </span>
+            <h2 className="text-xl font-bold text-[#14213d]">
+              Fechamento de Período & Limpeza de Base (Economizar Espaço)
+            </h2>
+            <p className="text-sm text-slate-700">
+              Gere o relatório contábil em CSV de meses ou semanas passadas e remova apenas as sessões e pedidos que já foram 100% quitados e fechados, mantendo o banco leve e performático no Supabase.
+            </p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Passo 1 */}
+            <div className="flex flex-col justify-between rounded-2xl border border-sand bg-white p-5 shadow-xs">
+              <div>
+                <span className="chip chip-on text-xs font-bold">Passo 1: Backup Fiscal Obrigatório</span>
+                <h3 className="mt-2 font-bold text-ocean text-base">
+                  Exportar Relatório Consolidado do Período
+                </h3>
+                <p className="mt-1 text-xs text-slate-700 leading-relaxed">
+                  Antes de qualquer exclusão, faça o download do arquivo CSV com todas as vendas, itens e recebimentos do período selecionado ({de} até {ate}) para guardar no seu computador ou enviar à contabilidade.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100">
+                <Link
+                  href={`/admin/relatorios/export?${qs}`}
+                  className="btn btn-gold w-full text-xs font-bold uppercase tracking-wider"
+                >
+                  Baixar Relatório CSV ({de} a {ate})
+                </Link>
+              </div>
+            </div>
+
+            {/* Passo 2 */}
+            <div className="flex flex-col justify-between rounded-2xl border border-red-300 bg-white p-5 shadow-xs">
+              <div>
+                <span className="chip chip-open text-xs font-bold border-red-400 text-red-900 bg-red-50">
+                  Passo 2: Expurgo Seguro de Histórico Fechado
+                </span>
+                <h3 className="mt-2 font-bold text-red-900 text-base">
+                  Limpar Sessões e Pedidos Anteriores
+                </h3>
+                <p className="mt-1 text-xs text-slate-700 leading-relaxed">
+                  Remove definitivamente apenas sessões com status <strong>Fechada</strong> e saldo <strong>Quitado</strong> anteriores à data escolhida. <strong className="text-red-900">Mesas abertas NUNCA são apagadas.</strong>
+                </p>
+              </div>
+
+              <form action={purgeClosedHistoryAction} className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3">
+                <label className="flex flex-col gap-1 text-xs font-bold text-slate-800">
+                  Data de corte (expurgar sessões fechadas antes de):
+                  <input
+                    type="date"
+                    name="before_date"
+                    defaultValue={de}
+                    required
+                    className="input h-10 text-xs"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-xs font-bold text-slate-800">
+                  Digite <span className="text-red-700">CONFIRMAR</span> para autorizar a limpeza:
+                  <input
+                    type="text"
+                    name="confirmation"
+                    placeholder="CONFIRMAR"
+                    required
+                    className="input h-10 text-xs font-bold uppercase tracking-wider text-red-900"
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  className="btn border-red-600 bg-red-600 text-white hover:bg-red-700 text-xs font-bold uppercase tracking-wider shadow-sm mt-1"
+                >
+                  Concluir Fechamento e Limpar Histórico
+                </button>
+              </form>
+            </div>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

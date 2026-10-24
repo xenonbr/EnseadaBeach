@@ -30,6 +30,12 @@ function friendly(m: string): string {
   if (m.includes("PEDIDO_AINDA_NAO_PRONTO")) {
     return "O pedido só pode ser marcado como entregue quando todos os setores concluírem o preparo.";
   }
+  if (m.includes("APENAS_PEDIDOS_CANCELADOS_PODEM_SER_EXCLUIDOS")) {
+    return "Apenas pedidos com status Cancelado podem ser excluídos.";
+  }
+  if (m.includes("PEDIDO_POSSUI_PAGAMENTO_VINCULADO")) {
+    return "Não é possível excluir um pedido que possui registro de pagamento.";
+  }
   if (m.includes("SEM_PERMISSAO")) {
     return "Você não tem permissão para executar esta ação.";
   }
@@ -123,3 +129,19 @@ export async function updateServiceCallAction(formData: FormData) {
         : "Chamado cancelado.",
   );
 }
+
+export async function deleteCancelledOrderAction(formData: FormData) {
+  const { supabase } = await requireStaff(["admin"]);
+  const id = String(formData.get("id") ?? "");
+  if (!UUID.test(id)) go("Pedido inválido.");
+
+  const { error } = await supabase.rpc("delete_cancelled_order", {
+    p_order_id: id,
+  });
+
+  revalidatePath("/admin/pedidos");
+  revalidatePath("/admin/contas");
+  if (error) go(friendly(error.message));
+  go("Pedido cancelado excluído permanentemente da lista.");
+}
+

@@ -6,6 +6,7 @@ import {
   cancelOrderAction,
   claimVerification,
   confirmOrderPresencial,
+  deleteCancelledOrderAction,
   deliverOrderAction,
   updateServiceCallAction,
 } from "./actions";
@@ -71,7 +72,7 @@ export default async function PedidosAdminPage({
 }: {
   searchParams: Promise<{ f?: string; msg?: string }>;
 }) {
-  const { supabase, user } = await requireStaff(["admin", "manager", "attendant"]);
+  const { supabase, user, profile } = await requireStaff(["admin", "manager", "attendant"]);
   const { f = "verificacao", msg } = await searchParams;
 
   let query = supabase
@@ -372,6 +373,20 @@ export default async function PedidosAdminPage({
                     />
                     <button className="btn border-red-600 text-red-700">
                       Confirmar cancelamento
+                    </button>
+                  </form>
+                </details>
+              )}
+
+              {o.status === "CANCELADO" && profile.role === "admin" && (
+                <details className="pt-1">
+                  <summary className="cursor-pointer text-xs font-semibold text-rose-700 hover:underline">
+                    🗑️ Excluir pedido cancelado (liberar espaço)
+                  </summary>
+                  <form action={deleteCancelledOrderAction} className="mt-2 flex items-center gap-2">
+                    <input type="hidden" name="id" value={o.id} />
+                    <button className="btn border-rose-500 bg-rose-50 text-xs font-bold text-rose-900 hover:bg-rose-100">
+                      Confirmar exclusão definitiva
                     </button>
                   </form>
                 </details>
