@@ -72,42 +72,42 @@ const STATUS_INFO: Record<string, { label: string; desc: string; chipClass: stri
   AGUARDANDO_CONFIRMACAO: {
     label: "Aguardando confirmação presencial",
     desc: "Seu pedido foi recebido. Um atendente irá até sua mesa para confirmar antes do preparo.",
-    chipClass: "chip-open",
+    chipClass: "bg-amber-100 text-amber-900 border border-amber-300",
   },
   EM_VERIFICACAO: {
     label: "Atendente em verificação",
     desc: "Um atendente está conferindo seu pedido presencialmente na mesa.",
-    chipClass: "chip-open",
+    chipClass: "bg-amber-100 text-amber-900 border border-amber-300",
   },
   CONFIRMADO: {
     label: "Confirmado — liberado para preparo",
     desc: "Confirmado pelo atendente e encaminhado para cozinha/bar.",
-    chipClass: "chip-on",
+    chipClass: "bg-sky-100 text-sky-900 border border-sky-300",
   },
   EM_PREPARACAO: {
     label: "Em preparação",
-    desc: "Seu pedido está sendo preparado.",
-    chipClass: "chip-on",
+    desc: "Seu pedido está sendo preparado com carinho.",
+    chipClass: "bg-blue-100 text-blue-900 border border-blue-300",
   },
   PARCIALMENTE_PRONTO: {
     label: "Parcialmente pronto",
     desc: "Parte do seu pedido já ficou pronta.",
-    chipClass: "chip-on",
+    chipClass: "bg-indigo-100 text-indigo-900 border border-indigo-300",
   },
   PRONTO: {
     label: "Pronto para entrega",
     desc: "Seu pedido está pronto e será levado à mesa.",
-    chipClass: "chip-on",
+    chipClass: "bg-emerald-100 text-emerald-900 border border-emerald-300",
   },
   ENTREGUE: {
     label: "Entregue na mesa",
-    desc: "Pedido entregue. Bom proveito!",
-    chipClass: "chip-on",
+    desc: "Pedido entregue. Bom proveito na Praia dos Coqueiros!",
+    chipClass: "bg-emerald-100 text-emerald-900 border border-emerald-300",
   },
   CANCELADO: {
     label: "Cancelado",
     desc: "Este pedido foi cancelado.",
-    chipClass: "",
+    chipClass: "bg-rose-100 text-rose-900 border border-rose-300",
   },
 };
 
@@ -149,6 +149,7 @@ export function TableOrderClient({
       return `${crypto.randomUUID()}-${crypto.randomUUID()}`;
     }
   });
+
   const [cart, setCart] = useState<CartItem[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -162,11 +163,13 @@ export function TableOrderClient({
     }
     return [];
   });
+
   const [idempotencyKey, setIdempotencyKey] = useState<string>(() =>
     typeof crypto !== "undefined" ? crypto.randomUUID() : "",
   );
   const [customerName, setCustomerName] = useState<string>("");
   const [orderNotes, setOrderNotes] = useState<string>("");
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>("ALL");
 
   // Modal de configuração de item
   const [activeProduct, setActiveProduct] = useState<MenuProduct | null>(null);
@@ -192,7 +195,6 @@ export function TableOrderClient({
   const saveCart = useCallback(
     (next: CartItem[]) => {
       setCart(next);
-      // Nova edição do carrinho gera nova chave de idempotência para o próximo envio
       setIdempotencyKey(crypto.randomUUID());
       try {
         localStorage.setItem(cartKey, JSON.stringify(next));
@@ -357,7 +359,7 @@ export function TableOrderClient({
       saveCart([]);
       setOrderNotes("");
       setLastPlacedMsg(
-        `Pedido #${res.order_number} enviado (${formatCents(res.total_cents)})! Aguarde o atendente ir até sua mesa para confirmar antes do preparo.`,
+        `Pedido #${res.order_number} enviado (${formatCents(res.total_cents)})! O garçom virá confirmar presencialmente na mesa antes do início do preparo.`,
       );
       await loadMyOrders();
     } catch {
@@ -367,82 +369,111 @@ export function TableOrderClient({
     }
   }
 
+  const visibleCategories = useMemo(() => {
+    if (activeCategoryFilter === "ALL") return categories;
+    return categories.filter((c) => c.id === activeCategoryFilter);
+  }, [categories, activeCategoryFilter]);
+
   return (
     <div className="flex flex-col gap-6 text-left">
+      {/* ========================================================
+          CHAMAR ATENDENTE (SEPARADO DE PEDIDO DE PRODUTOS)
+          ======================================================== */}
       {canOrder && (
-        <section className="card flex flex-wrap items-center justify-between gap-3 bg-white">
-          <div>
-            <strong className="block text-ocean">Precisa de atendimento presencial?</strong>
-            <span className="text-xs text-slate-700">
-              Chame um atendente para tirar dúvidas, pedir apoio ou solicitar o fechamento da conta.
-            </span>
+        <section className="rounded-3xl border border-[#e8dcc6] bg-white p-5 shadow-xs">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#0047ff]/10 text-xl text-[#0047ff]">
+                🔔
+              </span>
+              <div>
+                <strong className="block font-serif text-base font-bold text-[#14213d]">
+                  Precisa de atendimento na mesa?
+                </strong>
+                <span className="text-xs text-[#14213d]/70 leading-relaxed">
+                  Chame o garçom para tirar dúvidas, solicitar talheres ou pedir a conferência da conta.
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCallModalOpen(true);
+                setCallFeedback(null);
+              }}
+              className="inline-flex h-10 items-center justify-center rounded-full border-2 border-[#0047ff] bg-white px-5 font-sans text-xs font-bold text-[#0047ff] uppercase tracking-wider transition-all hover:bg-[#0047ff] hover:text-white active:scale-95 shadow-xs"
+            >
+              Chamar atendente
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setCallModalOpen(true);
-              setCallFeedback(null);
-            }}
-            className="btn border-ocean text-ocean"
-          >
-            Chamar atendente
-          </button>
         </section>
       )}
 
       {callFeedback && (
-        <section role="status" className="rounded-2xl border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950">
+        <section role="status" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs font-semibold text-amber-950 shadow-xs">
           {callFeedback}
         </section>
       )}
 
+      {/* Modal Chamar Atendente */}
       {callModalOpen && (
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="call-title"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs p-0 sm:items-center sm:p-4"
         >
-          <div className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl">
-            <h2 id="call-title" className="text-xl font-bold text-ocean">
-              Chamar atendente na mesa
-            </h2>
-            <p className="mt-1 text-xs text-slate-700">
-              Esta chamada avisa a equipe de atendimento (não envia pedido de produtos nem realiza pagamento).
-            </p>
-            <div className="mt-4 flex flex-col gap-3">
-              <label className="flex flex-col gap-1 font-medium">
-                Motivo
+          <div className="w-full max-w-md rounded-t-3xl border border-[#e8dcc6] bg-white p-6 shadow-2xl sm:rounded-3xl">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#00c2d1]/15 text-xl text-[#00c2d1]">
+                🔔
+              </span>
+              <div>
+                <h2 id="call-title" className="font-serif text-xl font-bold text-[#14213d]">
+                  Chamar Atendente
+                </h2>
+                <p className="text-[11px] text-[#14213d]/60">
+                  Notifica nossa equipe de salão na Praia dos Coqueiros
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-4">
+              <label className="flex flex-col gap-1.5 text-xs font-bold text-[#14213d]">
+                Qual é a necessidade?
                 <select
                   value={callReason}
                   onChange={(e) =>
                     setCallReason(e.target.value as "AJUDA" | "DUVIDA" | "PEDIR_CONTA" | "OUTRO")
                   }
-                  className="input"
+                  className="h-11 rounded-xl border border-[#e8dcc6] bg-white px-3 text-sm text-[#14213d] focus:border-[#0047ff] focus:outline-hidden"
                 >
                   <option value="AJUDA">Preciso de ajuda na mesa</option>
-                  <option value="DUVIDA">Dúvida sobre o cardápio</option>
+                  <option value="DUVIDA">Dúvida sobre os pratos ou bebidas</option>
                   <option value="PEDIR_CONTA">Pedir a conta para conferência</option>
                   <option value="OUTRO">Outro motivo</option>
                 </select>
               </label>
-              <label className="flex flex-col gap-1 font-medium">
+
+              <label className="flex flex-col gap-1.5 text-xs font-bold text-[#14213d]">
                 Observação curta (opcional)
                 <input
                   type="text"
                   maxLength={200}
                   value={callDetails}
                   onChange={(e) => setCallDetails(e.target.value)}
-                  placeholder="Ex.: trazer guardanapos"
-                  className="input"
+                  placeholder="Ex.: trazer guardanapos extras ou gelo"
+                  className="h-11 rounded-xl border border-[#e8dcc6] bg-white px-3 text-sm text-[#14213d] placeholder:text-[#14213d]/40 focus:border-[#0047ff] focus:outline-hidden"
                 />
               </label>
             </div>
-            <div className="mt-5 flex gap-2">
+
+            <div className="mt-6 flex gap-3">
               <button
                 type="button"
                 onClick={() => setCallModalOpen(false)}
-                className="btn flex-1"
+                className="h-11 flex-1 rounded-full border border-[#e8dcc6] bg-white text-xs font-bold text-[#14213d] uppercase tracking-wider hover:bg-slate-50"
               >
                 Cancelar
               </button>
@@ -463,15 +494,15 @@ export function TableOrderClient({
                     if (error) {
                       setCallFeedback(
                         error.message.includes("AGUARDE_PARA_NOVA_CHAMADA")
-                          ? "Recebemos sua chamada há instantes. Aguarde alguns segundos antes de enviar outra."
+                          ? "Recebemos seu chamado há instantes. Aguarde alguns segundos antes de enviar outro."
                           : "Não foi possível enviar o chamado agora. Tente novamente.",
                       );
                     } else {
                       const res = data as { already_open?: boolean };
                       setCallFeedback(
                         res?.already_open
-                          ? "Já existe um chamado aberto para sua mesa. Um atendente virá em instantes!"
-                          : "Chamado enviado! Um atendente foi avisado e virá até sua mesa.",
+                          ? "Já existe um chamado ativo para sua mesa. Um atendente virá em instantes!"
+                          : "Chamado enviado! Um atendente virá até sua mesa na praia.",
                       );
                       setCallDetails("");
                     }
@@ -480,9 +511,9 @@ export function TableOrderClient({
                     setCallingAttendant(false);
                   }
                 }}
-                className="btn btn-primary flex-1"
+                className="h-11 flex-1 rounded-full bg-[#0047ff] text-xs font-bold text-white uppercase tracking-wider shadow-md hover:bg-[#0036c4] disabled:opacity-50"
               >
-                {callingAttendant ? "Chamando..." : "Confirmar chamada"}
+                {callingAttendant ? "Chamando..." : "Confirmar Chamada"}
               </button>
             </div>
           </div>
@@ -490,43 +521,110 @@ export function TableOrderClient({
       )}
 
       {lastPlacedMsg && (
-        <section role="status" className="rounded-2xl border-2 border-turquoise bg-sky-50 p-4 text-sky-950">
-          <p className="font-bold">Pedido recebido — aguardando confirmação presencial</p>
-          <p className="mt-1 text-sm">{lastPlacedMsg}</p>
+        <section role="status" className="rounded-3xl border-2 border-[#00c2d1] bg-sky-50/80 p-5 text-sky-950 shadow-sm">
+          <p className="font-serif text-lg font-bold text-[#0047ff]">
+            Pedido enviado com sucesso!
+          </p>
+          <p className="mt-1 text-xs text-sky-900 leading-relaxed">{lastPlacedMsg}</p>
         </section>
       )}
 
-      {/* Lista do cardápio por categoria */}
+      {/* ========================================================
+          FILTRO DE CATEGORIAS DA MESA
+          ======================================================== */}
+      {categories.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <button
+            type="button"
+            onClick={() => setActiveCategoryFilter("ALL")}
+            className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider transition-all ${
+              activeCategoryFilter === "ALL"
+                ? "bg-[#0047ff] text-white shadow-sm"
+                : "border border-[#e8dcc6] bg-white text-[#14213d]/80 hover:border-[#0047ff] hover:text-[#0047ff]"
+            }`}
+          >
+            Todas
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setActiveCategoryFilter(c.id)}
+              className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider transition-all ${
+                activeCategoryFilter === c.id
+                  ? "bg-[#0047ff] text-white shadow-sm"
+                  : "border border-[#e8dcc6] bg-white text-[#14213d]/80 hover:border-[#0047ff] hover:text-[#0047ff]"
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ========================================================
+          LISTA DO CARDÁPIO NA MESA
+          ======================================================== */}
       {products.length === 0 ? (
-        <section className="card text-center">
-          <p className="text-lg">Estamos preparando nosso cardápio. Em breve, teremos novidades para você.</p>
+        <section className="rounded-3xl border border-[#e8dcc6] bg-white p-8 text-center shadow-xs">
+          <p className="font-serif text-base font-bold text-[#14213d]">
+            Estamos organizando o cardápio desta sessão. Em breve novas opções estarão ativas.
+          </p>
         </section>
       ) : (
-        categories.map((c) => {
+        visibleCategories.map((c) => {
           const list = products.filter((p) => p.category_id === c.id);
           if (list.length === 0) return null;
           return (
-            <section key={c.id} className="flex flex-col gap-3">
-              <h2 className="border-b-2 border-gold pb-1 text-xl font-bold text-ocean">{c.name}</h2>
-              <ul className="flex flex-col gap-3">
+            <section key={c.id} className="flex flex-col gap-4">
+              <div className="flex items-center gap-2 border-b-2 border-[#f6b600] pb-1.5">
+                <span className="h-2 w-2 rounded-full bg-[#00c2d1]" />
+                <h2 className="font-serif text-2xl font-bold text-[#14213d]">{c.name}</h2>
+              </div>
+
+              <ul className="flex flex-col gap-4">
                 {list.map((p) => (
-                  <li key={p.id} className="card flex flex-col gap-3 sm:flex-row sm:items-center">
-                    {p.image_url && (
+                  <li
+                    key={p.id}
+                    className="flex flex-col gap-4 rounded-3xl border border-[#e8dcc6] bg-white p-4 shadow-xs sm:flex-row sm:items-center sm:p-5"
+                  >
+                    {p.image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.image_url} alt={p.name} className="h-28 w-full shrink-0 rounded-xl object-cover sm:size-24" />
-                    )}
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-bold">{p.name}</h3>
-                        <span className="shrink-0 font-bold text-ocean">{formatCents(p.price_cents)}</span>
+                      <img
+                        src={p.image_url}
+                        alt={p.name}
+                        className="h-32 w-full shrink-0 rounded-2xl object-cover sm:h-24 sm:w-24"
+                      />
+                    ) : (
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#0047ff]/5 text-2xl text-[#0047ff]">
+                        🍽️
                       </div>
-                      {p.description && <p className="text-sm text-slate-700">{p.description}</p>}
+                    )}
+
+                    <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="font-serif text-lg font-bold text-[#14213d]">{p.name}</h3>
+                        <span className="shrink-0 rounded-xl bg-[#f6b600]/15 px-2.5 py-1 font-sans text-sm font-extrabold text-[#14213d]">
+                          {formatCents(p.price_cents)}
+                        </span>
+                      </div>
+
+                      {p.description && (
+                        <p className="text-xs leading-relaxed text-[#14213d]/70">{p.description}</p>
+                      )}
+
                       {!p.available ? (
-                        <span className="chip chip-open w-fit">Indisponível no momento</span>
+                        <span className="mt-1 w-fit rounded-full bg-amber-100 px-3 py-0.5 text-[11px] font-bold text-amber-900">
+                          Indisponível no momento
+                        </span>
                       ) : canOrder ? (
                         <div className="mt-2">
-                          <button type="button" onClick={() => openConfigurator(p)} className="btn btn-primary w-full sm:w-auto">
-                            Adicionar ao pedido
+                          <button
+                            type="button"
+                            onClick={() => openConfigurator(p)}
+                            className="inline-flex h-9 w-full items-center justify-center rounded-full bg-[#0047ff] px-4 font-sans text-xs font-bold text-white uppercase tracking-wider shadow-xs transition-colors hover:bg-[#0036c4] active:scale-95 sm:w-auto"
+                          >
+                            Adicionar ao Pedido
                           </button>
                         </div>
                       ) : null}
@@ -539,34 +637,42 @@ export function TableOrderClient({
         })
       )}
 
-      {/* Modal/painel de configuração de item */}
+      {/* ========================================================
+          MODAL DE CONFIGURAÇÃO DE ITEM COM ADICIONAIS
+          ======================================================== */}
       {activeProduct && (
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="config-title"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs p-0 sm:items-center sm:p-4"
         >
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl">
-            <div className="flex items-start justify-between gap-2">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-[#e8dcc6] bg-white p-6 shadow-2xl sm:rounded-3xl">
+            <div className="flex items-start justify-between gap-3 border-b border-[#e8dcc6] pb-3">
               <div>
-                <h2 id="config-title" className="text-xl font-bold text-ocean">
+                <h2 id="config-title" className="font-serif text-2xl font-bold text-[#14213d]">
                   {activeProduct.name}
                 </h2>
-                <p className="font-semibold">{formatCents(activeProduct.price_cents)}</p>
+                <p className="font-sans text-base font-extrabold text-[#0047ff]">
+                  {formatCents(activeProduct.price_cents)}
+                </p>
               </div>
-              <button type="button" onClick={() => setActiveProduct(null)} className="btn h-9 px-3">
-                Fechar
+              <button
+                type="button"
+                onClick={() => setActiveProduct(null)}
+                className="h-8 w-8 rounded-full bg-slate-100 text-sm font-bold text-[#14213d] hover:bg-slate-200"
+              >
+                ✕
               </button>
             </div>
 
             {activeProduct.option_groups.map((g) => {
               const chosen = selectedOptions[g.id] ?? [];
               return (
-                <fieldset key={g.id} className="mt-4 rounded-xl border border-slate-300 p-3">
-                  <legend className="px-1 font-bold">
+                <fieldset key={g.id} className="mt-4 rounded-2xl border border-[#e8dcc6] bg-[#fbf8f2]/50 p-4">
+                  <legend className="px-2 font-serif text-sm font-bold text-[#14213d]">
                     {g.name}{" "}
-                    <span className="text-xs font-normal text-slate-700">
+                    <span className="font-sans text-xs font-normal text-[#14213d]/60">
                       ({g.min_select > 0 ? `Obrigatório: mín. ${g.min_select}` : "Opcional"}, máx. {g.max_select})
                     </span>
                   </legend>
@@ -576,18 +682,29 @@ export function TableOrderClient({
                       .map((o) => {
                         const checked = chosen.includes(o.id);
                         return (
-                          <label key={o.id} className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border p-2">
-                            <span className="flex items-center gap-2">
+                          <label
+                            key={o.id}
+                            className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 transition-colors ${
+                              checked
+                                ? "border-[#0047ff] bg-white shadow-xs"
+                                : "border-slate-200 bg-white hover:border-slate-300"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5">
                               <input
                                 type={g.max_select === 1 ? "radio" : "checkbox"}
                                 name={`grp-${g.id}`}
                                 checked={checked}
                                 onChange={() => toggleOption(g, o.id)}
-                                className="size-5"
+                                className="h-4 w-4 accent-[#0047ff]"
                               />
-                              <span>{o.name}</span>
+                              <span className="text-xs font-semibold text-[#14213d]">{o.name}</span>
                             </span>
-                            {o.price_cents > 0 && <span className="font-semibold text-ocean">+ {formatCents(o.price_cents)}</span>}
+                            {o.price_cents > 0 && (
+                              <span className="font-sans text-xs font-bold text-[#0047ff]">
+                                + {formatCents(o.price_cents)}
+                              </span>
+                            )}
                           </label>
                         );
                       })}
@@ -596,82 +713,138 @@ export function TableOrderClient({
               );
             })}
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 font-medium">
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-1.5 text-xs font-bold text-[#14213d]">
                 Quantidade
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={itemQty}
-                  onChange={(e) => setItemQty(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
-                  className="input"
-                />
+                <div className="flex h-11 items-center rounded-xl border border-[#e8dcc6] bg-white px-2">
+                  <button
+                    type="button"
+                    onClick={() => setItemQty((q) => Math.max(1, q - 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold hover:bg-slate-200"
+                  >
+                    -
+                  </button>
+                  <span className="flex-1 text-center font-bold text-sm">{itemQty}</span>
+                  <button
+                    type="button"
+                    onClick={() => setItemQty((q) => Math.min(50, q + 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold hover:bg-slate-200"
+                  >
+                    +
+                  </button>
+                </div>
               </label>
-              <label className="flex flex-col gap-1 font-medium sm:col-span-2">
-                Observação do item (opcional)
+
+              <label className="flex flex-col gap-1.5 text-xs font-bold text-[#14213d] sm:col-span-2">
+                Observação para a cozinha/bar (opcional)
                 <input
                   type="text"
                   maxLength={250}
                   value={itemNotes}
                   onChange={(e) => setItemNotes(e.target.value)}
-                  placeholder="Ex.: sem cebola, gelo à parte"
-                  className="input"
+                  placeholder="Ex.: sem cebola, gelo à parte, ponto da carne"
+                  className="h-11 rounded-xl border border-[#e8dcc6] bg-white px-3 text-sm text-[#14213d] placeholder:text-[#14213d]/40 focus:border-[#0047ff] focus:outline-hidden"
                 />
               </label>
             </div>
 
             {configError && (
-              <p role="alert" className="mt-3 rounded-xl border border-red-400 bg-red-50 p-3 text-sm text-red-900">
+              <p role="alert" className="mt-3 rounded-xl border border-red-300 bg-red-50 p-3 text-xs text-red-900">
                 {configError}
               </p>
             )}
 
-            <div className="mt-5 flex gap-2">
-              <button type="button" onClick={() => setActiveProduct(null)} className="btn flex-1">
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveProduct(null)}
+                className="h-11 flex-1 rounded-full border border-[#e8dcc6] bg-white text-xs font-bold text-[#14213d] uppercase tracking-wider hover:bg-slate-50"
+              >
                 Cancelar
               </button>
-              <button type="button" onClick={confirmAddToCart} className="btn btn-primary flex-1">
-                Confirmar item
+              <button
+                type="button"
+                onClick={confirmAddToCart}
+                className="h-11 flex-1 rounded-full bg-[#0047ff] text-xs font-bold text-white uppercase tracking-wider shadow-md hover:bg-[#0036c4] active:scale-95"
+              >
+                Confirmar Item
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Carrinho individual do dispositivo */}
+      {/* ========================================================
+          CARRINHO INDIVIDUAL DO DISPOSITIVO
+          ======================================================== */}
       {canOrder && cart.length > 0 && (
-        <section aria-label="Seu carrinho" className="card border-2 border-ocean">
-          <h2 className="text-xl font-bold text-ocean">Seu carrinho neste aparelho</h2>
-          <p className="mt-1 text-xs text-slate-700">
-            Cada celular na mesa tem seu próprio carrinho separado. Os preços são validados e fixados no servidor no momento do envio.
+        <section aria-label="Seu carrinho" className="rounded-3xl border-2 border-[#0047ff] bg-white p-5 shadow-lg">
+          <div className="flex items-center justify-between border-b border-[#e8dcc6] pb-3">
+            <div>
+              <span className="font-sans text-[10px] font-bold tracking-[0.2em] text-[#00c2d1] uppercase">
+                Seu Aparelho
+              </span>
+              <h2 className="font-serif text-2xl font-bold text-[#14213d]">
+                Carrinho de Pedidos
+              </h2>
+            </div>
+            <span className="rounded-full bg-[#0047ff]/10 px-3 py-1 font-sans text-xs font-bold text-[#0047ff]">
+              {cart.reduce((s, i) => s + i.quantity, 0)} {cart.reduce((s, i) => s + i.quantity, 0) === 1 ? "item" : "itens"}
+            </span>
+          </div>
+
+          <p className="mt-2 text-xs text-[#14213d]/60 leading-relaxed">
+            Cada celular na mesa possui seu próprio carrinho individual. Os preços são confirmados e congelados pelo servidor no momento do envio.
           </p>
 
-          <ul className="mt-3 flex flex-col gap-3 divide-y">
+          <ul className="mt-4 flex flex-col gap-3 divide-y divide-[#e8dcc6]/60">
             {cart.map((item) => {
               const optsPrice = item.options_summary.reduce((s, o) => s + o.price_cents, 0);
               const lineTotal = item.quantity * (item.unit_price_cents + optsPrice);
               return (
-                <li key={item.cartItemId} className="flex flex-col gap-1 pt-3 first:pt-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <strong>
+                <li key={item.cartItemId} className="flex flex-col gap-1.5 pt-3 first:pt-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <strong className="font-serif text-base font-bold text-[#14213d]">
                       {item.quantity}x {item.product_name}
                     </strong>
-                    <span className="font-bold text-ocean">{formatCents(lineTotal)}</span>
+                    <span className="font-sans text-sm font-extrabold text-[#0047ff]">
+                      {formatCents(lineTotal)}
+                    </span>
                   </div>
+
                   {item.options_summary.length > 0 && (
-                    <p className="text-xs text-slate-700">{item.options_summary.map((o) => o.name).join(" • ")}</p>
+                    <p className="text-xs text-[#14213d]/70">
+                      {item.options_summary.map((o) => o.name).join(" • ")}
+                    </p>
                   )}
-                  {item.notes && <p className="text-xs italic text-slate-700">Obs.: {item.notes}</p>}
+
+                  {item.notes && (
+                    <p className="text-xs italic text-[#14213d]/60">Obs.: {item.notes}</p>
+                  )}
+
                   <div className="mt-1 flex items-center gap-2">
-                    <button type="button" onClick={() => changeCartQty(item.cartItemId, -1)} className="btn h-8 px-3" aria-label="Diminuir quantidade">
+                    <button
+                      type="button"
+                      onClick={() => changeCartQty(item.cartItemId, -1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#e8dcc6] text-xs font-bold hover:bg-slate-50"
+                      aria-label="Diminuir quantidade"
+                    >
                       -
                     </button>
-                    <span className="font-semibold">{item.quantity}</span>
-                    <button type="button" onClick={() => changeCartQty(item.cartItemId, 1)} className="btn h-8 px-3" aria-label="Aumentar quantidade">
+                    <span className="font-bold text-xs px-1">{item.quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => changeCartQty(item.cartItemId, 1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#e8dcc6] text-xs font-bold hover:bg-slate-50"
+                      aria-label="Aumentar quantidade"
+                    >
                       +
                     </button>
-                    <button type="button" onClick={() => removeCartItem(item.cartItemId)} className="btn ml-auto h-8 px-3 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => removeCartItem(item.cartItemId)}
+                      className="ml-auto text-xs font-bold text-rose-600 hover:underline"
+                    >
                       Remover
                     </button>
                   </div>
@@ -680,98 +853,134 @@ export function TableOrderClient({
             })}
           </ul>
 
-          <form onSubmit={handleSubmitOrder} className="mt-4 flex flex-col gap-3 border-t pt-4">
+          <form onSubmit={handleSubmitOrder} className="mt-5 flex flex-col gap-4 border-t border-[#e8dcc6] pt-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm font-medium">
-                Seu nome ou apelido (opcional)
+              <label className="flex flex-col gap-1 text-xs font-bold text-[#14213d]">
+                Seu nome ou apelido na mesa (opcional)
                 <input
                   type="text"
                   maxLength={60}
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   placeholder="Ex.: Rodrigo"
-                  className="input"
+                  className="h-10 rounded-xl border border-[#e8dcc6] bg-white px-3 text-xs text-[#14213d] placeholder:text-[#14213d]/40 focus:border-[#0047ff] focus:outline-hidden"
                 />
               </label>
-              <label className="flex flex-col gap-1 text-sm font-medium">
-                Observação geral (opcional)
+
+              <label className="flex flex-col gap-1 text-xs font-bold text-[#14213d]">
+                Observação do pedido (opcional)
                 <input
                   type="text"
                   maxLength={300}
                   value={orderNotes}
                   onChange={(e) => setOrderNotes(e.target.value)}
-                  placeholder="Ex.: trazer copos extras"
-                  className="input"
+                  placeholder="Ex.: copos com gelo à parte"
+                  className="h-10 rounded-xl border border-[#e8dcc6] bg-white px-3 text-xs text-[#14213d] placeholder:text-[#14213d]/40 focus:border-[#0047ff] focus:outline-hidden"
                 />
               </label>
             </div>
 
-            <div className="rounded-xl bg-amber-50 p-3 text-xs text-amber-950">
-              <strong>Confirmação presencial obrigatória:</strong> Ao enviar, seu pedido entra na fila do atendente. Ele irá até sua mesa confirmar os itens antes do preparo na cozinha ou bar.
+            <div className="rounded-2xl border border-amber-300 bg-amber-50/80 p-3.5 text-xs text-amber-950 leading-relaxed">
+              <strong>🌴 Confirmação presencial:</strong> Ao enviar, seu pedido entra na fila da equipe. O garçom irá até sua mesa na praia confirmar os itens antes do preparo.
             </div>
 
             {submitError && (
-              <p role="alert" className="rounded-xl border border-red-400 bg-red-50 p-3 text-sm text-red-900">
+              <p role="alert" className="rounded-2xl border border-red-300 bg-red-50 p-3 text-xs text-red-900">
                 {submitError}
               </p>
             )}
 
-            <div className="flex items-center justify-between text-lg font-bold">
-              <span>Total estimado</span>
-              <span className="text-ocean">{formatCents(cartTotalCents)}</span>
+            <div className="flex items-center justify-between border-t border-[#e8dcc6] pt-3">
+              <span className="font-serif text-lg font-bold text-[#14213d]">Total do Pedido</span>
+              <span className="font-sans text-xl font-extrabold text-[#0047ff]">
+                {formatCents(cartTotalCents)}
+              </span>
             </div>
 
-            <button type="submit" disabled={submitting} className="btn btn-primary h-12 w-full text-lg">
-              {submitting ? "Enviando pedido..." : "Enviar pedido para confirmação"}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-[#f6b600] font-sans text-xs font-bold uppercase tracking-wider text-[#14213d] shadow-md transition-all hover:bg-[#e0a500] hover:shadow-lg disabled:opacity-50 active:scale-95"
+            >
+              {submitting ? "Enviando Pedido..." : "Enviar Pedido para Confirmação"}
             </button>
           </form>
         </section>
       )}
 
-      {/* Acompanhamento apenas dos próprios pedidos do aparelho na sessão aberta */}
+      {/* ========================================================
+          ACOMPANHAMENTO DOS PRÓPRIOS PEDIDOS NESTA SESSÃO
+          ======================================================== */}
       {canOrder && (
-        <section aria-label="Meus pedidos nesta sessão" className="card flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-bold text-ocean">Meus pedidos nesta sessão</h2>
-            <button type="button" onClick={() => void loadMyOrders()} disabled={loadingOrders} className="btn h-9 px-3 text-sm">
+        <section aria-label="Meus pedidos nesta sessão" className="rounded-3xl border border-[#e8dcc6] bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between gap-3 border-b border-[#e8dcc6] pb-3">
+            <div>
+              <span className="font-sans text-[10px] font-bold tracking-[0.2em] text-[#00c2d1] uppercase">
+                Acompanhamento
+              </span>
+              <h2 className="font-serif text-xl font-bold text-[#14213d]">
+                Meus Pedidos na Mesa
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadMyOrders()}
+              disabled={loadingOrders}
+              className="inline-flex h-8 items-center justify-center rounded-full border border-[#e8dcc6] px-3 font-sans text-[11px] font-bold text-[#14213d] uppercase tracking-wider hover:bg-slate-50"
+            >
               {loadingOrders ? "Atualizando..." : "Atualizar"}
             </button>
           </div>
 
           {myOrders.length === 0 ? (
-            <p className="text-sm text-slate-700">Você ainda não enviou pedidos neste aparelho durante a sessão atual.</p>
+            <p className="mt-4 text-xs text-[#14213d]/60">
+              Você ainda não enviou pedidos através deste celular na sessão atual.
+            </p>
           ) : (
-            <ul className="flex flex-col gap-3">
+            <ul className="mt-4 flex flex-col gap-4">
               {myOrders.map((o) => {
                 const st = STATUS_INFO[o.status] ?? { label: o.status, desc: "", chipClass: "" };
                 return (
-                  <li key={o.id} className="rounded-xl border border-slate-300 p-3">
+                  <li key={o.id} className="rounded-2xl border border-[#e8dcc6] bg-[#fbf8f2]/40 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <strong>
+                      <strong className="font-serif text-base font-bold text-[#14213d]">
                         Pedido #{o.order_number} {o.customer_name ? `(${o.customer_name})` : ""}
                       </strong>
-                      <span className={`chip ${st.chipClass}`}>{st.label}</span>
+                      <span className={`rounded-full px-3 py-1 font-sans text-[11px] font-bold ${st.chipClass}`}>
+                        {st.label}
+                      </span>
                     </div>
-                    {st.desc && <p className="mt-1 text-xs text-slate-700">{st.desc}</p>}
-                    {o.cancel_reason && <p className="mt-1 text-xs font-semibold text-red-800">Motivo do cancelamento: {o.cancel_reason}</p>}
-                    <ul className="mt-2 flex flex-col gap-1 border-t pt-2 text-sm">
+
+                    {st.desc && <p className="mt-1 text-xs text-[#14213d]/70">{st.desc}</p>}
+                    {o.cancel_reason && (
+                      <p className="mt-1 text-xs font-semibold text-rose-800">
+                        Motivo do cancelamento: {o.cancel_reason}
+                      </p>
+                    )}
+
+                    <ul className="mt-3 flex flex-col gap-1 border-t border-[#e8dcc6]/60 pt-2 text-xs">
                       {o.items.map((it) => (
-                        <li key={it.id} className="flex justify-between gap-2">
+                        <li key={it.id} className="flex justify-between gap-3">
                           <span>
                             {it.quantity}x {it.product_name}
                             {it.options.length > 0 && (
-                              <span className="block text-xs text-slate-600">
+                              <span className="block text-[11px] text-[#14213d]/60">
                                 {it.options.map((op) => `${op.group_name}: ${op.option_name}`).join(" • ")}
                               </span>
                             )}
                           </span>
-                          <span className="font-semibold">{formatCents(it.line_total_cents)}</span>
+                          <span className="font-semibold text-[#14213d]">
+                            {formatCents(it.line_total_cents)}
+                          </span>
                         </li>
                       ))}
                     </ul>
-                    <div className="mt-2 flex justify-between border-t pt-2 font-bold">
-                      <span>Total do pedido</span>
-                      <span className="text-ocean">{formatCents(o.total_cents)}</span>
+
+                    <div className="mt-3 flex justify-between border-t border-[#e8dcc6]/60 pt-2 text-sm font-bold">
+                      <span className="font-serif text-[#14213d]">Total</span>
+                      <span className="font-sans font-extrabold text-[#0047ff]">
+                        {formatCents(o.total_cents)}
+                      </span>
                     </div>
                   </li>
                 );
