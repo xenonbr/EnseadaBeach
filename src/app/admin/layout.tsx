@@ -29,6 +29,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
         <nav aria-label="Principal" className="-mx-1 flex gap-1 overflow-x-auto px-1 md:flex-col">
           <NavLink href="/admin" exact>Início</NavLink>
+          {canTables && <NavLink href="/admin/pedidos">Pedidos</NavLink>}
           {canTables && <NavLink href="/admin/mesas">Mesas</NavLink>}
           {canManage && <NavLink href="/admin/cardapio">Cardápio</NavLink>}
         </nav>
