@@ -1,6 +1,14 @@
 @import "tailwindcss";
 
-/* Paleta de referência do material do proprietário (cores ainda não validadas no Brand Kit original). */
+/* ========================================================
+   BRAND KIT OFICIAL — CABANA ENSEADA BEACH TRANCOSO
+   - Azul Oceano: #0047FF (Principal)
+   - Turquesa:    #00C2D1 (Detalhes e destaques frescos)
+   - Dourado:     #F6B600 (Destaques nobres e sol)
+   - Branco:      #FFFFFF (Fundo e contrastes)
+   - Areia:       #E8DCC6 (Fundo praiano suave e bordas)
+   - Tipografia:  Montserrat (Bold / Caps / Regular) & Playfair Display
+   ======================================================== */
 :root {
   --background: #fbf8f2;
   --foreground: #14213d;
@@ -8,6 +16,7 @@
   --turquoise: #00c2d1;
   --gold: #f6b600;
   --sand: #e8dcc6;
+  --white: #ffffff;
   color-scheme: light;
 }
 
@@ -18,14 +27,15 @@
   --color-turquoise: var(--turquoise);
   --color-gold: var(--gold);
   --color-sand: var(--sand);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-white: var(--white);
+  --font-sans: var(--font-montserrat);
+  --font-serif: var(--font-playfair);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-montserrat), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
 }
@@ -36,6 +46,15 @@ body {
 }
 
 @layer components {
+  .brand-title {
+    font-family: var(--font-serif), Georgia, serif;
+    letter-spacing: -0.02em;
+  }
+  .brand-tagline {
+    font-family: var(--font-montserrat), sans-serif;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
   .btn {
     display: inline-flex;
     height: 2.75rem;
@@ -44,42 +63,73 @@ body {
     border-radius: 0.75rem;
     border: 1px solid #94a3b8;
     background: #fff;
-    padding: 0 1rem;
+    padding: 0 1.25rem;
     font-weight: 600;
+    font-size: 0.9375rem;
     color: var(--foreground);
     cursor: pointer;
+    transition: all 0.15s ease-in-out;
   }
-  .btn:hover { background: #f1f5f9; }
+  .btn:hover {
+    background: #f1f5f9;
+  }
   .btn-primary {
     background: var(--ocean);
     border-color: var(--ocean);
     color: #fff;
+    box-shadow: 0 2px 4px rgb(0 71 255 / 0.15);
   }
-  .btn-primary:hover { background: #0036c4; }
+  .btn-primary:hover {
+    background: #0036c4;
+    border-color: #0036c4;
+  }
+  .btn-gold {
+    background: var(--gold);
+    border-color: var(--gold);
+    color: #14213d;
+    font-weight: 700;
+    box-shadow: 0 2px 4px rgb(246 182 0 / 0.25);
+  }
+  .btn-gold:hover {
+    background: #e0a500;
+    border-color: #e0a500;
+  }
   .input {
     height: 2.75rem;
     border-radius: 0.75rem;
     border: 1px solid #94a3b8;
     background: #fff;
-    padding: 0 0.75rem;
+    padding: 0 0.875rem;
     color: var(--foreground);
+    transition: border-color 0.15s ease;
+  }
+  .input:focus {
+    border-color: var(--ocean);
   }
   .card {
     border-radius: 1rem;
     border: 1px solid var(--sand);
     background: #fff;
-    padding: 1rem;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+    padding: 1.25rem;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.04);
   }
   .chip {
     display: inline-flex;
     align-items: center;
     border-radius: 9999px;
     border: 1px solid #94a3b8;
-    padding: 0.125rem 0.75rem;
-    font-size: 0.875rem;
+    padding: 0.2rem 0.85rem;
+    font-size: 0.8125rem;
     font-weight: 600;
   }
-  .chip-on { background: #d9f7fa; border-color: #008a96; color: #00535b; }
-  .chip-open { background: #fff4cc; border-color: #b58300; color: #5c4200; }
+  .chip-on {
+    background: #d9f7fa;
+    border-color: #008a96;
+    color: #00535b;
+  }
+  .chip-open {
+    background: #fff4cc;
+    border-color: #b58300;
+    color: #5c4200;
+  }
 }
