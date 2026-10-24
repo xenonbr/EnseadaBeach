@@ -17,62 +17,95 @@ export default async function MesasPage({ searchParams }: { searchParams: Promis
   if (f === "inativas") query = query.eq("active", false);
   const { data, error } = await query;
   const rows = (data ?? []) as unknown as Row[];
+  const total = rows.length;
+  const ativas = rows.filter((r) => r.active).length;
+  const abertas = rows.filter((r) => r.table_sessions.some((s) => s.status === "open")).length;
 
   return (
-    <main className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">Mesas</h1>
-      <p className="text-sm text-slate-700">
-        As mesas cadastradas são capacidade inicial; ative apenas as que existem de fato.
-      </p>
-      {msg && <p role="status" className="rounded-lg border border-sky-300 bg-sky-50 p-3">{msg}</p>}
-      {error && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3">Não foi possível carregar as mesas.</p>}
+    <main className="flex flex-col gap-5">
+      <header>
+        <h1 className="text-2xl font-bold md:text-3xl">Mesas</h1>
+        <p className="text-slate-700">As mesas cadastradas são capacidade inicial. Ative apenas as que existem de fato.</p>
+      </header>
 
-      <form className="flex flex-wrap gap-2" role="search">
-        <input name="q" defaultValue={q} placeholder="Buscar mesa" aria-label="Buscar mesa" className="h-11 rounded-lg border px-3" />
-        <select name="f" defaultValue={f} aria-label="Filtrar" className="h-11 rounded-lg border px-3">
-          <option value="">Todas</option><option value="ativas">Ativas</option><option value="inativas">Desativadas</option>
-        </select>
-        <button className="h-11 rounded-lg border px-4">Filtrar</button>
-      </form>
+      {msg && <p role="status" className="rounded-xl border border-sky-400 bg-sky-50 p-3 text-sky-950">{msg}</p>}
+      {error && <p role="alert" className="rounded-xl border border-red-400 bg-red-50 p-3 text-red-900">Não foi possível carregar as mesas.</p>}
 
-      <form action={addTable} className="flex flex-wrap gap-2">
-        <input name="name" placeholder="Nova mesa (ex.: Mesa 41)" aria-label="Nome da nova mesa" className="h-11 rounded-lg border px-3" />
-        <button className="h-11 rounded-lg bg-[#0047FF] px-4 font-semibold text-white">Adicionar mesa</button>
-      </form>
+      <dl className="grid grid-cols-3 gap-3">
+        {[["Exibidas", total], ["Ativas", ativas], ["Com sessão", abertas]].map(([l, v]) => (
+          <div key={l as string} className="card text-center">
+            <dd className="text-2xl font-bold text-ocean md:text-3xl">{v}</dd>
+            <dt className="text-sm text-slate-700">{l}</dt>
+          </div>
+        ))}
+      </dl>
 
-      {rows.length === 0 && !error && <p>Nenhuma mesa encontrada.</p>}
-      <ul className="flex flex-col gap-3">
+      <section className="card grid gap-4 lg:grid-cols-2">
+        <form className="flex flex-wrap gap-2" role="search">
+          <input name="q" defaultValue={q} placeholder="Buscar mesa" aria-label="Buscar mesa" className="input min-w-0 flex-1" />
+          <select name="f" defaultValue={f} aria-label="Filtrar" className="input">
+            <option value="">Todas</option>
+            <option value="ativas">Ativas</option>
+            <option value="inativas">Desativadas</option>
+          </select>
+          <button className="btn">Filtrar</button>
+        </form>
+        <form action={addTable} className="flex flex-wrap gap-2">
+          <input name="name" placeholder="Nova mesa (ex.: Mesa 41)" aria-label="Nome da nova mesa" className="input min-w-0 flex-1" />
+          <button className="btn btn-primary">Adicionar mesa</button>
+        </form>
+      </section>
+
+      {rows.length === 0 && !error && <p className="card text-center text-slate-700">Nenhuma mesa encontrada.</p>}
+
+      <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {rows.map((t) => {
           const open = t.table_sessions.find((s) => s.status === "open");
           return (
-            <li key={t.id} className="flex flex-col gap-2 rounded-xl border bg-white p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <strong className="text-lg">{t.display_name}</strong>
-                <span className="rounded-full border px-3 py-1 text-sm">{t.active ? "Ativa" : "Desativada"}</span>
-                <span className="rounded-full border px-3 py-1 text-sm">{open ? "Sessão aberta" : "Sem sessão"}</span>
+            <li key={t.id} className={`card flex flex-col gap-3 ${t.active ? "border-l-4 border-l-turquoise" : ""}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="mr-auto text-lg font-bold">{t.display_name}</h2>
+                <span className={`chip ${t.active ? "chip-on" : ""}`}>{t.active ? "Ativa" : "Desativada"}</span>
+                <span className={`chip ${open ? "chip-open" : ""}`}>{open ? "Sessão aberta" : "Sem sessão"}</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <form action={renameTable} className="flex gap-2">
-                  <input type="hidden" name="id" value={t.id} />
-                  <input name="name" defaultValue={t.display_name} aria-label={`Renomear ${t.display_name}`} className="h-10 rounded-lg border px-2" />
-                  <button className="h-10 rounded-lg border px-3">Salvar nome</button>
-                </form>
-                <form action={setActive}>
-                  <input type="hidden" name="id" value={t.id} />
-                  <input type="hidden" name="active" value={String(!t.active)} />
-                  {t.active && open && (
-                    <label className="mr-2 text-sm"><input type="checkbox" name="force" value="true" /> Forçar (mantém a sessão aberta)</label>
-                  )}
-                  <button className="h-10 rounded-lg border px-3">{t.active ? "Desativar" : "Ativar"}</button>
-                </form>
-                {t.active && !open && (
-                  <form action={openSession}><input type="hidden" name="id" value={t.id} /><button className="h-10 rounded-lg border px-3">Abrir sessão</button></form>
+
+              <form action={setActive} className="flex flex-col gap-2">
+                <input type="hidden" name="id" value={t.id} />
+                <input type="hidden" name="active" value={String(!t.active)} />
+                {t.active && open && (
+                  <label className="text-sm">
+                    <input type="checkbox" name="force" value="true" className="mr-2" />
+                    Forçar desativação (a sessão continua aberta)
+                  </label>
                 )}
-                {open && (
-                  <form action={closeSession}><input type="hidden" name="session" value={open.id} /><button className="h-10 rounded-lg border px-3">Encerrar sessão</button></form>
+                <button className={`btn w-full ${t.active ? "" : "btn-primary"}`}>{t.active ? "Desativar mesa" : "Ativar mesa"}</button>
+              </form>
+
+              <div className="grid grid-cols-2 gap-2">
+                {open ? (
+                  <form action={closeSession}>
+                    <input type="hidden" name="session" value={open.id} />
+                    <button className="btn w-full">Encerrar sessão</button>
+                  </form>
+                ) : t.active ? (
+                  <form action={openSession}>
+                    <input type="hidden" name="id" value={t.id} />
+                    <button className="btn w-full">Abrir sessão</button>
+                  </form>
+                ) : (
+                  <button className="btn w-full opacity-50" disabled>Abrir sessão</button>
                 )}
-                <Link href={`/admin/mesas/${t.id}/qr`} className="inline-flex h-10 items-center rounded-lg border px-3">QR Code</Link>
+                <Link href={`/admin/mesas/${t.id}/qr`} className="btn w-full">QR Code</Link>
               </div>
+
+              <details>
+                <summary className="cursor-pointer text-sm font-semibold text-ocean">Renomear</summary>
+                <form action={renameTable} className="mt-2 flex gap-2">
+                  <input type="hidden" name="id" value={t.id} />
+                  <input name="name" defaultValue={t.display_name} aria-label={`Renomear ${t.display_name}`} className="input min-w-0 flex-1" />
+                  <button className="btn">Salvar</button>
+                </form>
+              </details>
             </li>
           );
         })}

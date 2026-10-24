@@ -1,22 +1,48 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { logout } from "../login/actions";
+import { NavLink } from "./NavLink";
 
 export const metadata: Metadata = { title: "Painel", robots: { index: false, follow: false } };
+
+const ROLE_LABEL: Record<string, string> = {
+  admin: "Administrador",
+  manager: "Gerente",
+  attendant: "Atendente",
+  kitchen: "Cozinha",
+  bar: "Bar",
+};
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { profile } = await requireStaff();
   const canManage = profile.role === "admin" || profile.role === "manager";
+  const canTables = canManage || profile.role === "attendant";
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="flex flex-wrap items-center gap-4 border-b bg-white p-4">
-        <Link href="/admin" className="font-bold text-[#0047FF]">Painel Enseada</Link>
-        {canManage && <Link href="/admin/mesas" className="underline">Mesas</Link>}
-        <span className="ml-auto text-sm text-slate-700">{profile.full_name} ({profile.role})</span>
-        <form action={logout}><button className="h-10 rounded-lg border px-4">Sair</button></form>
-      </header>
-      <div className="mx-auto max-w-5xl p-4">{children}</div>
+    <div className="min-h-screen md:grid md:grid-cols-[16rem_1fr]">
+      <aside className="sticky top-0 z-10 flex flex-col gap-3 bg-ocean p-3 text-white md:h-screen md:gap-6 md:p-5">
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.jpg" alt="Cabana Enseada Beach Trancoso" className="h-12 w-auto rounded-lg md:h-auto md:w-full" />
+          <form action={logout} className="ml-auto md:hidden">
+            <button className="btn h-10">Sair</button>
+          </form>
+        </div>
+        <nav aria-label="Principal" className="-mx-1 flex gap-1 overflow-x-auto px-1 md:flex-col">
+          <NavLink href="/admin" exact>Início</NavLink>
+          {canTables && <NavLink href="/admin/mesas">Mesas</NavLink>}
+          {canManage && <NavLink href="/admin/cardapio">Cardápio</NavLink>}
+        </nav>
+        <div className="mt-auto hidden flex-col gap-3 border-t border-white/25 pt-4 md:flex">
+          <div>
+            <p className="font-semibold">{profile.full_name}</p>
+            <p className="text-sm text-white/85">{ROLE_LABEL[profile.role] ?? profile.role}</p>
+          </div>
+          <form action={logout}><button className="btn w-full">Sair</button></form>
+        </div>
+      </aside>
+      <div className="min-w-0 p-4 md:p-8">
+        <div className="mx-auto max-w-6xl">{children}</div>
+      </div>
     </div>
   );
 }
