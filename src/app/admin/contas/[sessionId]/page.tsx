@@ -44,7 +44,9 @@ type SessionDetail = {
   id: string;
   status: "open" | "closed";
   opened_at: string;
+  opened_by: string | null;
   closed_at: string | null;
+  closed_by: string | null;
   close_note: string | null;
   dining_tables: { id: string; display_name: string } | null;
   orders: {
@@ -55,6 +57,9 @@ type SessionDetail = {
     total_cents: number;
     cancel_reason: string | null;
     created_at: string;
+    confirmed_by: string | null;
+    delivered_by: string | null;
+    cancelled_by: string | null;
     order_items: {
       id: string;
       product_name_snapshot: string;
@@ -73,16 +78,29 @@ type SessionDetail = {
     method: string;
     amount_cents: number;
     reference: string | null;
+    recorded_by: string | null;
     created_at: string;
     reversed_at: string | null;
+    reversed_by: string | null;
     reversal_reason: string | null;
   }[];
   session_adjustments: {
     id: string;
     amount_cents: number;
     reason: string;
+    created_by: string | null;
     created_at: string;
   }[];
+};
+
+type ServiceRatingRow = {
+  id: string;
+  staff_id: string | null;
+  staff_name_snapshot: string;
+  customer_name: string | null;
+  stars: number;
+  comment: string | null;
+  created_at: string;
 };
 
 export default async function ContaSessaoPage({
@@ -99,19 +117,33 @@ export default async function ContaSessaoPage({
 
   if (!/^[0-9a-f-]{36}$/i.test(sessionId)) notFound();
 
-  const [{ data: sessData }, { data: sumData }] = await Promise.all([
-    supabase
-      .from("table_sessions")
-      .select(
-        "id, status, opened_at, closed_at, close_note, dining_tables(id, display_name), orders(id, order_number, status, customer_name, total_cents, cancel_reason, created_at, order_items(id, product_name_snapshot, quantity, line_total_cents, order_item_options(group_name_snapshot, option_name_snapshot))), session_payments(id, order_id, payer_label, method, amount_cents, reference, created_at, reversed_at, reversal_reason), session_adjustments(id, amount_cents, reason, created_at)",
-      )
-      .eq("id", sessionId)
-      .maybeSingle(),
-    supabase.rpc("get_session_account_summary", { p_session_id: sessionId }),
-  ]);
+  const [{ data: sessData }, { data: sumData }, { data: profilesData }, { data: ratingsData }] =
+    await Promise.all([
+      supabase
+        .from("table_sessions")
+        .select(
+          "id, status, opened_at, opened_by, closed_at, closed_by, close_note, dining_tables(id, display_name), orders(id, order_number, status, customer_name, total_cents, cancel_reason, created_at, confirmed_by, delivered_by, cancelled_by, order_items(id, product_name_snapshot, quantity, line_total_cents, order_item_options(group_name_snapshot, option_name_snapshot))), session_payments(id, order_id, payer_label, method, amount_cents, reference, recorded_by, created_at, reversed_at, reversed_by, reversal_reason), session_adjustments(id, amount_cents, reason, created_by, created_at)",
+        )
+        .eq("id", sessionId)
+        .maybeSingle(),
+      supabase.rpc("get_session_account_summary", { p_session_id: sessionId }),
+      supabase.from("profiles").select("id, full_name"),
+      supabase
+        .from("service_ratings")
+        .select("id, staff_id, staff_name_snapshot, customer_name, stars, comment, created_at")
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: false }),
+    ]);
 
   if (!sessData) notFound();
   const sess = sessData as unknown as SessionDetail;
+  const staffMap = new Map<string, string>();
+  for (const p of (profilesData ?? []) as { id: string; full_name: string }[]) {
+    staffMap.set(p.id, p.full_name);
+  }
+  const staffName = (id: string | null | undefined) =>
+    id ? (staffMap.get(id) ?? "Funcionário") : null;
+  const sessionRatings = (ratingsData ?? []) as ServiceRatingRow[];
   const summary: SummaryRow = (sumData?.[0] as SummaryRow) ?? {
     consumed_cents: 0,
     unconfirmed_cents: 0,
@@ -151,11 +183,12 @@ export default async function ContaSessaoPage({
                 dateStyle: "short",
                 timeStyle: "short",
               })}
+              {sess.opened_by ? ` por ${staffName(sess.opened_by)}` : ""}
               {sess.closed_at
                 ? ` • Encerrada em ${new Date(sess.closed_at).toLocaleString("pt-BR", {
                     dateStyle: "short",
                     timeStyle: "short",
-                  })}`
+                  })}${sess.closed_by ? ` por ${staffName(sess.closed_by)}` : ""}`
                 : ""}
             </p>
           </div>
@@ -398,6 +431,23 @@ export default async function ContaSessaoPage({
                 {o.cancel_reason && (
                   <p className="mt-1 text-xs text-red-800">Motivo: {o.cancel_reason}</p>
                 )}
+                <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-600">
+                  {o.confirmed_by && (
+                    <span>
+                      ✅ Confirmado na mesa por: <strong className="text-ocean">{staffName(o.confirmed_by)}</strong>
+                    </span>
+                  )}
+                  {o.delivered_by && (
+                    <span>
+                      🍽️ Entregue por: <strong className="text-emerald-800">{staffName(o.delivered_by)}</strong>
+                    </span>
+                  )}
+                  {o.cancelled_by && (
+                    <span>
+                      ❌ Cancelado por: <strong className="text-red-800">{staffName(o.cancelled_by)}</strong>
+                    </span>
+                  )}
+                </div>
                 <ul className="mt-2 flex flex-col gap-1 border-t pt-2 text-sm">
                   {o.order_items.map((it) => (
                     <li key={it.id} className="flex justify-between gap-2">
@@ -462,11 +512,13 @@ export default async function ContaSessaoPage({
                       dateStyle: "short",
                       timeStyle: "short",
                     })}
+                    {p.recorded_by ? ` • Registrado por: ${staffName(p.recorded_by)}` : ""}
                     {p.reference ? ` • Ref.: ${p.reference}` : ""}
                   </p>
                   {p.reversed_at ? (
                     <p className="mt-1 text-xs font-semibold text-red-800">
                       Estornado: {p.reversal_reason}
+                      {p.reversed_by ? ` (por ${staffName(p.reversed_by)})` : ""}
                     </p>
                   ) : (
                     canManage &&
@@ -516,6 +568,7 @@ export default async function ContaSessaoPage({
                         dateStyle: "short",
                         timeStyle: "short",
                       })}
+                      {a.created_by ? ` • Autorizado por: ${staffName(a.created_by)}` : ""}
                     </span>
                   </div>
                   <span className="font-bold">{formatCents(a.amount_cents)}</span>
@@ -525,6 +578,53 @@ export default async function ContaSessaoPage({
           )}
         </section>
       </div>
+
+      {/* Avaliações de Atendimento dos Clientes nesta Sessão */}
+      <section className="card flex flex-col gap-3 border-l-4 border-l-gold">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-bold text-ocean">
+            ⭐ Avaliações de Atendimento dos Clientes ({sessionRatings.length})
+          </h2>
+        </div>
+        {sessionRatings.length === 0 ? (
+          <p className="text-sm text-slate-700">
+            {sess.status === "open"
+              ? "As avaliações ficarão disponíveis para o cliente assim que a sessão da mesa for encerrada."
+              : "Nenhuma avaliação enviada pelo cliente nesta sessão até o momento."}
+          </p>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {sessionRatings.map((r) => (
+              <li key={r.id} className="rounded-xl border border-sand bg-amber-50/30 p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="text-ocean">👤 Garçom: {r.staff_name_snapshot}</strong>
+                  <span className="font-bold text-amber-600">
+                    {"★".repeat(r.stars)}
+                    {"☆".repeat(5 - r.stars)} ({r.stars}/5)
+                  </span>
+                </div>
+                {r.customer_name && (
+                  <p className="mt-1 text-xs font-semibold text-slate-700">
+                    Cliente: {r.customer_name}
+                  </p>
+                )}
+                {r.comment && (
+                  <p className="mt-1 rounded bg-white p-2 text-xs italic text-slate-800 border border-slate-100">
+                    “{r.comment}”
+                  </p>
+                )}
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Enviada em{" "}
+                  {new Date(r.created_at).toLocaleString("pt-BR", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   );
 }

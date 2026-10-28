@@ -68,6 +68,27 @@ type MyOrder = {
   }[];
 };
 
+type RatableStaff = {
+  id: string;
+  full_name: string;
+  role: string;
+};
+
+type SubmittedRating = {
+  staff_id: string | null;
+  staff_name: string;
+  stars: number;
+  comment: string | null;
+};
+
+type RatableClosedSession = {
+  session_id: string;
+  table_name: string;
+  closed_at: string;
+  staff: RatableStaff[];
+  my_ratings: SubmittedRating[];
+};
+
 const STATUS_INFO: Record<string, { label: string; desc: string; chipClass: string }> = {
   AGUARDANDO_CONFIRMACAO: {
     label: "Aguardando confirmação presencial",
@@ -192,6 +213,15 @@ export function TableOrderClient({
   const [callingAttendant, setCallingAttendant] = useState(false);
   const [callFeedback, setCallFeedback] = useState<string | null>(null);
 
+  // Estado de avaliação de atendimento de mesa encerrada
+  const [ratableSession, setRatableSession] = useState<RatableClosedSession | null>(null);
+  const [ratingStarsByStaff, setRatingStarsByStaff] = useState<Record<string, number>>({});
+  const [ratingCommentByStaff, setRatingCommentByStaff] = useState<Record<string, string>>({});
+  const [ratingCustomerName, setRatingCustomerName] = useState<string>("");
+  const [submittingRatingKey, setSubmittingRatingKey] = useState<string | null>(null);
+  const [ratingFeedback, setRatingFeedback] = useState<string | null>(null);
+  const [ratingError, setRatingError] = useState<string | null>(null);
+
   const saveCart = useCallback(
     (next: CartItem[]) => {
       setCart(next);
@@ -210,12 +240,23 @@ export function TableOrderClient({
     setLoadingOrders(true);
     try {
       const supabase = createClient();
-      const { data, error } = await supabase.rpc("get_my_orders", {
-        p_table_token: tableToken,
-        p_client_token: clientToken,
-      });
+      const [{ data, error }, { data: ratableData }] = await Promise.all([
+        supabase.rpc("get_my_orders", {
+          p_table_token: tableToken,
+          p_client_token: clientToken,
+        }),
+        supabase.rpc("get_ratable_closed_session", {
+          p_table_token: tableToken,
+          p_client_token: clientToken,
+        }),
+      ]);
       if (!error && Array.isArray(data)) {
         setMyOrders(data as MyOrder[]);
+      }
+      if (ratableData && typeof ratableData === "object" && "session_id" in ratableData) {
+        setRatableSession(ratableData as RatableClosedSession);
+      } else {
+        setRatableSession(null);
       }
     } finally {
       setLoadingOrders(false);
@@ -226,12 +267,23 @@ export function TableOrderClient({
     if (!clientToken) return;
     const supabase = createClient();
     const poll = async () => {
-      const { data, error } = await supabase.rpc("get_my_orders", {
-        p_table_token: tableToken,
-        p_client_token: clientToken,
-      });
+      const [{ data, error }, { data: ratableData }] = await Promise.all([
+        supabase.rpc("get_my_orders", {
+          p_table_token: tableToken,
+          p_client_token: clientToken,
+        }),
+        supabase.rpc("get_ratable_closed_session", {
+          p_table_token: tableToken,
+          p_client_token: clientToken,
+        }),
+      ]);
       if (!error && Array.isArray(data)) {
         setMyOrders(data as MyOrder[]);
+      }
+      if (ratableData && typeof ratableData === "object" && "session_id" in ratableData) {
+        setRatableSession(ratableData as RatableClosedSession);
+      } else {
+        setRatableSession(null);
       }
     };
     const initial = setTimeout(() => void poll(), 50);
@@ -241,6 +293,41 @@ export function TableOrderClient({
       clearInterval(timer);
     };
   }, [clientToken, tableToken]);
+
+  async function handleSubmitRating(staffId: string | null) {
+    if (!ratableSession || !clientToken) return;
+    const key = staffId ?? "GENERAL";
+    const stars = ratingStarsByStaff[key] ?? 5;
+    const comment = (ratingCommentByStaff[key] ?? "").trim();
+
+    setSubmittingRatingKey(key);
+    setRatingError(null);
+    setRatingFeedback(null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("submit_service_rating", {
+        p_table_token: tableToken,
+        p_client_token: clientToken,
+        p_session_id: ratableSession.session_id,
+        p_staff_id: staffId,
+        p_stars: stars,
+        p_comment: comment || null,
+        p_customer_name: ratingCustomerName.trim() || customerName.trim() || null,
+      });
+      if (error) {
+        setRatingError("Não foi possível enviar sua avaliação agora. Tente novamente.");
+        return;
+      }
+      setRatingFeedback(
+        "Avaliação registrada com sucesso! Muito obrigado por avaliar nosso atendimento na Praia dos Coqueiros.",
+      );
+      await loadMyOrders();
+    } catch {
+      setRatingError("Falha de conexão ao enviar avaliação. Tente novamente.");
+    } finally {
+      setSubmittingRatingKey(null);
+    }
+  }
 
   function openConfigurator(prod: MenuProduct) {
     setActiveProduct(prod);
@@ -376,6 +463,157 @@ export function TableOrderClient({
 
   return (
     <div className="flex flex-col gap-6 text-left">
+      {/* ========================================================
+          AVALIAÇÃO DO ATENDIMENTO DOS GARÇONS (MESA ENCERRADA)
+          ======================================================== */}
+      {ratableSession && (
+        <section
+          aria-label="Avalie o atendimento dos garçons"
+          className="rounded-3xl border-2 border-[#f6b600] bg-white p-5 shadow-md sm:p-6"
+        >
+          <div className="flex items-start gap-3 border-b border-[#e8dcc6] pb-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#f6b600]/20 text-2xl">
+              ⭐
+            </span>
+            <div>
+              <span className="font-sans text-[10px] font-extrabold tracking-[0.2em] text-[#0047ff] uppercase">
+                Sua Opinião Importa • Sessão Encerrada
+              </span>
+              <h2 className="font-serif text-2xl font-bold text-[#14213d]">
+                Como foi o atendimento na sua mesa?
+              </h2>
+              <p className="mt-0.5 text-xs text-[#14213d]/70 leading-relaxed">
+                Avalie os garçons que atenderam você hoje na Cabana Enseada Beach.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <label className="flex flex-col gap-1 text-xs font-bold text-[#14213d]">
+              Seu nome (opcional)
+              <input
+                type="text"
+                maxLength={60}
+                value={ratingCustomerName}
+                onChange={(e) => setRatingCustomerName(e.target.value)}
+                placeholder="Ex.: Rodrigo"
+                className="h-10 rounded-xl border border-[#e8dcc6] bg-[#fbf8f2]/50 px-3 text-xs text-[#14213d] placeholder:text-[#14213d]/40 focus:border-[#0047ff] focus:outline-hidden"
+              />
+            </label>
+          </div>
+
+          {ratingFeedback && (
+            <p
+              role="status"
+              className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-3 text-xs font-semibold text-emerald-900"
+            >
+              ✓ {ratingFeedback}
+            </p>
+          )}
+
+          {ratingError && (
+            <p
+              role="alert"
+              className="mt-4 rounded-2xl border border-red-300 bg-red-50 p-3 text-xs font-semibold text-red-900"
+            >
+              {ratingError}
+            </p>
+          )}
+
+          <ul className="mt-4 flex flex-col gap-4">
+            {(ratableSession.staff.length > 0
+              ? ratableSession.staff
+              : [{ id: "", full_name: "Equipe de Salão", role: "attendant" }]
+            ).map((waiter) => {
+              const staffId = waiter.id || null;
+              const key = staffId ?? "GENERAL";
+              const existing = ratableSession.my_ratings.find(
+                (r) => (r.staff_id ?? null) === staffId,
+              );
+              const currentStars = ratingStarsByStaff[key] ?? existing?.stars ?? 5;
+              const currentComment =
+                ratingCommentByStaff[key] !== undefined
+                  ? ratingCommentByStaff[key]
+                  : (existing?.comment ?? "");
+
+              return (
+                <li
+                  key={key}
+                  className="rounded-2xl border border-[#e8dcc6] bg-[#fbf8f2]/60 p-4 flex flex-col gap-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#00c2d1]">
+                        Atendimento na Mesa
+                      </span>
+                      <strong className="block font-serif text-lg font-bold text-[#14213d]">
+                        👤 {waiter.full_name}
+                      </strong>
+                    </div>
+                    {existing && (
+                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-bold text-emerald-900">
+                        ✓ Avaliado ({existing.stars} ★)
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Seletor de 1 a 5 estrelas */}
+                  <div className="flex items-center gap-2" role="group" aria-label={`Nota para ${waiter.full_name}`}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() =>
+                          setRatingStarsByStaff((prev) => ({ ...prev, [key]: star }))
+                        }
+                        aria-label={`${star} ${star === 1 ? "estrela" : "estrelas"}`}
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl border text-xl transition-all active:scale-95 ${
+                          star <= currentStars
+                            ? "border-[#f6b600] bg-[#f6b600]/20 text-[#d99b00] shadow-xs"
+                            : "border-[#e8dcc6] bg-white text-slate-300 hover:border-slate-300"
+                        }`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                    <span className="ml-2 text-xs font-bold text-[#14213d]">
+                      {currentStars} de 5 estrelas
+                    </span>
+                  </div>
+
+                  <input
+                    type="text"
+                    maxLength={300}
+                    value={currentComment}
+                    onChange={(e) =>
+                      setRatingCommentByStaff((prev) => ({
+                        ...prev,
+                        [key]: e.target.value,
+                      }))
+                    }
+                    placeholder={`Deixe um elogio ou comentário sobre o atendimento de ${waiter.full_name} (opcional)`}
+                    className="h-10 rounded-xl border border-[#e8dcc6] bg-white px-3 text-xs text-[#14213d] placeholder:text-[#14213d]/40 focus:border-[#0047ff] focus:outline-hidden"
+                  />
+
+                  <button
+                    type="button"
+                    disabled={submittingRatingKey === key}
+                    onClick={() => void handleSubmitRating(staffId)}
+                    className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#0047ff] px-5 font-sans text-xs font-bold uppercase tracking-wider text-white shadow-xs transition-all hover:bg-[#0036c4] disabled:opacity-50 sm:w-auto sm:self-end"
+                  >
+                    {submittingRatingKey === key
+                      ? "Enviando..."
+                      : existing
+                        ? "Atualizar Avaliação"
+                        : `Avaliar ${waiter.full_name}`}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {/* ========================================================
           CHAMAR ATENDENTE (SEPARADO DE PEDIDO DE PRODUTOS)
           ======================================================== */}

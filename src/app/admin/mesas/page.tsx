@@ -2,20 +2,32 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { addTable, closeSession, openSession, renameTable, setActive } from "./actions";
 
-type Row = { id: string; display_name: string; active: boolean; table_sessions: { id: string; status: string }[] };
+type Row = {
+  id: string;
+  display_name: string;
+  active: boolean;
+  table_sessions: { id: string; status: string; opened_by: string | null }[];
+};
 
 export default async function MesasPage({ searchParams }: { searchParams: Promise<{ q?: string; f?: string; msg?: string }> }) {
   const { supabase } = await requireStaff(["admin", "manager", "attendant"]);
   const { q = "", f = "", msg } = await searchParams;
   let query = supabase
     .from("dining_tables")
-    .select("id, display_name, active, table_sessions(id, status)")
+    .select("id, display_name, active, table_sessions(id, status, opened_by)")
     .order("sort_order")
     .order("display_name");
   if (q) query = query.ilike("display_name", `%${q.replace(/[%_]/g, "")}%`);
   if (f === "ativas") query = query.eq("active", true);
   if (f === "inativas") query = query.eq("active", false);
-  const { data, error } = await query;
+  const [{ data, error }, { data: profilesData }] = await Promise.all([
+    query,
+    supabase.from("profiles").select("id, full_name"),
+  ]);
+  const staffMap = new Map<string, string>();
+  for (const p of (profilesData ?? []) as { id: string; full_name: string }[]) {
+    staffMap.set(p.id, p.full_name);
+  }
   const rows = (data ?? []) as unknown as Row[];
   const total = rows.length;
   const ativas = rows.filter((r) => r.active).length;
@@ -68,6 +80,12 @@ export default async function MesasPage({ searchParams }: { searchParams: Promis
                 <span className={`chip ${t.active ? "chip-on" : ""}`}>{t.active ? "Ativa" : "Desativada"}</span>
                 <span className={`chip ${open ? "chip-open" : ""}`}>{open ? "Sessão aberta" : "Sem sessão"}</span>
               </div>
+              {open?.opened_by && (
+                <p className="text-xs text-slate-600">
+                  👤 Sessão aberta por:{" "}
+                  <strong className="text-ocean">{staffMap.get(open.opened_by) ?? "Funcionário"}</strong>
+                </p>
+              )}
 
               <form action={setActive} className="flex flex-col gap-2">
                 <input type="hidden" name="id" value={t.id} />

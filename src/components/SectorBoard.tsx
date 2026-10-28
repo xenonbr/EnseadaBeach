@@ -13,7 +13,9 @@ type TaskRow = {
   status: "PENDING" | "IN_PROGRESS" | "READY" | "CANCELLED";
   created_at: string;
   started_at: string | null;
+  started_by: string | null;
   completed_at: string | null;
+  completed_by: string | null;
   orders: {
     id: string;
     order_number: number;
@@ -21,6 +23,7 @@ type TaskRow = {
     customer_name: string | null;
     notes: string | null;
     confirmed_at: string | null;
+    confirmed_by: string | null;
     dining_tables: { display_name: string } | null;
     order_items: {
       id: string;
@@ -34,6 +37,11 @@ type TaskRow = {
       }[];
     }[];
   } | null;
+};
+
+type ProfileRow = {
+  id: string;
+  full_name: string;
 };
 
 type SectorProd = {
@@ -77,7 +85,7 @@ export async function SectorBoard({
   let query = supabase
     .from("production_tasks")
     .select(
-      "id, sector, status, created_at, started_at, completed_at, orders(id, order_number, status, customer_name, notes, confirmed_at, dining_tables(display_name), order_items(id, product_name_snapshot, quantity, sector_snapshot, notes, order_item_options(group_name_snapshot, option_name_snapshot)))",
+      "id, sector, status, created_at, started_at, started_by, completed_at, completed_by, orders(id, order_number, status, customer_name, notes, confirmed_at, confirmed_by, dining_tables(display_name), order_items(id, product_name_snapshot, quantity, sector_snapshot, notes, order_item_options(group_name_snapshot, option_name_snapshot)))",
     )
     .eq("sector", sector)
     .order("created_at", { ascending: true });
@@ -88,7 +96,7 @@ export async function SectorBoard({
     query = query.eq("status", "READY");
   }
 
-  const [{ data: taskData, error }, { data: prodData }, { data: serverTime }] =
+  const [{ data: taskData, error }, { data: prodData }, { data: profilesData }, { data: serverTime }] =
     await Promise.all([
       query.limit(80),
       supabase
@@ -97,6 +105,7 @@ export async function SectorBoard({
         .eq("sector", sector)
         .eq("status", "published")
         .order("name"),
+      supabase.from("profiles").select("id, full_name"),
       supabase
         .rpc("resolve_table", { p_token: "" })
         .then(() => ({ data: new Date().toISOString() })),
@@ -104,6 +113,12 @@ export async function SectorBoard({
 
   const tasks = (taskData ?? []) as unknown as TaskRow[];
   const sectorProducts = (prodData ?? []) as SectorProd[];
+  const staffMap = new Map<string, string>();
+  for (const p of (profilesData ?? []) as ProfileRow[]) {
+    staffMap.set(p.id, p.full_name);
+  }
+  const staffName = (id: string | null | undefined) =>
+    id ? (staffMap.get(id) ?? "Funcionário") : null;
   const nowMs = new Date(serverTime).getTime();
 
   return (
@@ -244,6 +259,25 @@ export async function SectorBoard({
                   <strong>Obs. do pedido:</strong> {ord.notes}
                 </p>
               )}
+
+              {/* Controle interno de quem assumiu o pedido e o preparo */}
+              <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                {ord.confirmed_by && (
+                  <span>
+                    ✅ Confirmado na mesa por: <strong className="text-ocean">{staffName(ord.confirmed_by)}</strong>
+                  </span>
+                )}
+                {t.started_by && (
+                  <span>
+                    • 👨‍🍳 Preparo assumido por: <strong className="text-ocean">{staffName(t.started_by)}</strong>
+                  </span>
+                )}
+                {t.completed_by && (
+                  <span>
+                    • 🏁 Concluído por: <strong className="text-emerald-800">{staffName(t.completed_by)}</strong>
+                  </span>
+                )}
+              </div>
 
               {canOperate && t.status !== "READY" && t.status !== "CANCELLED" && (
                 <div className="mt-auto grid grid-cols-1 gap-2 pt-2 sm:grid-cols-2">

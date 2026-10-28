@@ -29,12 +29,22 @@ const CALL_REASON_LABEL: Record<string, string> = {
   OUTRO: "Outro motivo",
 };
 
+type ProfileRow = {
+  id: string;
+  full_name: string;
+  role: string;
+};
+
 type ServiceCallRow = {
   id: string;
   reason: string;
   details: string | null;
-  status: "PENDENTE" | "EM_ATENDIMENTO";
+  status: "PENDENTE" | "EM_ATENDIMENTO" | "ATENDIDA" | "CANCELADA";
   handled_by: string | null;
+  handled_at: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  resolution_note: string | null;
   created_at: string;
   dining_tables: { display_name: string } | null;
 };
@@ -49,9 +59,22 @@ type OrderRow = {
   cancel_reason: string | null;
   version: number;
   claimed_by: string | null;
-  created_at: string;
+  claimed_at: string | null;
+  confirmed_by: string | null;
   confirmed_at: string | null;
+  delivered_by: string | null;
+  delivered_at: string | null;
+  cancelled_by: string | null;
+  cancelled_at: string | null;
+  created_at: string;
   dining_tables: { display_name: string } | null;
+  production_tasks: {
+    id: string;
+    sector: "kitchen" | "bar";
+    status: string;
+    started_by: string | null;
+    completed_by: string | null;
+  }[];
   order_items: {
     id: string;
     product_name_snapshot: string;
@@ -78,9 +101,9 @@ export default async function PedidosAdminPage({
   let query = supabase
     .from("orders")
     .select(
-      "id, order_number, status, customer_name, total_cents, notes, cancel_reason, version, claimed_by, created_at, confirmed_at, dining_tables(display_name), order_items(id, product_name_snapshot, quantity, line_total_cents, sector_snapshot, notes, order_item_options(group_name_snapshot, option_name_snapshot, price_cents_snapshot))",
+      "id, order_number, status, customer_name, total_cents, notes, cancel_reason, version, claimed_by, claimed_at, confirmed_by, confirmed_at, delivered_by, delivered_at, cancelled_by, cancelled_at, created_at, dining_tables(display_name), production_tasks(id, sector, status, started_by, completed_by), order_items(id, product_name_snapshot, quantity, line_total_cents, sector_snapshot, notes, order_item_options(group_name_snapshot, option_name_snapshot, price_cents_snapshot))",
     )
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: f === "todos" ? false : true });
 
   if (f === "verificacao") {
     query = query.in("status", ["AGUARDANDO_CONFIRMACAO", "EM_VERIFICACAO"]);
@@ -90,13 +113,30 @@ export default async function PedidosAdminPage({
     query = query.in("status", ["CONFIRMADO", "EM_PREPARACAO", "PARCIALMENTE_PRONTO", "PRONTO"]);
   }
 
-  const [{ data, error }, { data: callsData }, { data: serverTime }] = await Promise.all([
+  const [
+    { data, error },
+    { data: callsData },
+    { data: recentCallsData },
+    { data: profilesData },
+    { data: serverTime },
+  ] = await Promise.all([
     query.limit(100),
     supabase
       .from("service_calls")
-      .select("id, reason, details, status, handled_by, created_at, dining_tables(display_name)")
+      .select(
+        "id, reason, details, status, handled_by, handled_at, resolved_by, resolved_at, resolution_note, created_at, dining_tables(display_name)",
+      )
       .in("status", ["PENDENTE", "EM_ATENDIMENTO"])
       .order("created_at", { ascending: true }),
+    supabase
+      .from("service_calls")
+      .select(
+        "id, reason, details, status, handled_by, handled_at, resolved_by, resolved_at, resolution_note, created_at, dining_tables(display_name)",
+      )
+      .in("status", ["ATENDIDA", "CANCELADA"])
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase.from("profiles").select("id, full_name, role"),
     supabase
       .rpc("resolve_table", { p_token: "" })
       .then(() => ({ data: new Date().toISOString() })),
@@ -104,6 +144,14 @@ export default async function PedidosAdminPage({
 
   const orders = (data ?? []) as unknown as OrderRow[];
   const calls = (callsData ?? []) as unknown as ServiceCallRow[];
+  const recentCalls = (recentCallsData ?? []) as unknown as ServiceCallRow[];
+  const staffMap = new Map<string, ProfileRow>();
+  for (const p of (profilesData ?? []) as ProfileRow[]) {
+    staffMap.set(p.id, p);
+  }
+  const staffName = (id: string | null | undefined) =>
+    id ? (staffMap.get(id)?.full_name ?? "Funcionário") : null;
+
   const nowMs = new Date(serverTime).getTime();
 
   return (
@@ -112,7 +160,7 @@ export default async function PedidosAdminPage({
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">Atendimento, Confirmação e Entrega</h1>
           <p className="text-slate-700">
-            Nenhum pedido vai para a cozinha ou bar sem verificação presencial na mesa.
+            Nenhum pedido vai para a cozinha ou bar sem verificação presencial na mesa. Todas as tarefas exibem o funcionário responsável.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -134,14 +182,14 @@ export default async function PedidosAdminPage({
         </p>
       )}
 
-      {/* Fila de chamados de atendente ("Chamar atendente") */}
+      {/* Fila de chamados de atendente ("Chamar atendente" / Idas nas mesas) */}
       {calls.length > 0 && (
         <section
           aria-label="Chamados de atendente ativos"
           className="card border-2 border-gold bg-amber-50/60"
         >
           <h2 className="text-lg font-bold text-ocean">
-            Chamados de Mesa ({calls.length})
+            Chamados de Mesa Ativos ({calls.length})
           </h2>
           <ul className="mt-3 grid gap-3 md:grid-cols-2">
             {calls.map((c) => {
@@ -149,6 +197,7 @@ export default async function PedidosAdminPage({
                 0,
                 Math.floor((nowMs - new Date(c.created_at).getTime()) / 60000),
               );
+              const handlerName = staffName(c.handled_by);
               return (
                 <li
                   key={c.id}
@@ -164,6 +213,12 @@ export default async function PedidosAdminPage({
                     </span>
                   </div>
                   {c.details && <p className="text-sm text-slate-700">Obs.: {c.details}</p>}
+                  {handlerName && (
+                    <p className="rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-semibold text-ocean">
+                      👤 Assumido por: <strong>{handlerName}</strong>
+                      {c.handled_by === user.id ? " (você)" : ""}
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-2 pt-1">
                     {c.status === "PENDENTE" && (
                       <form action={updateServiceCallAction}>
@@ -234,7 +289,10 @@ export default async function PedidosAdminPage({
           const isPendingConfirm =
             o.status === "AGUARDANDO_CONFIRMACAO" || o.status === "EM_VERIFICACAO";
           const isDelayed = isPendingConfirm && waitMin >= 5;
-          const claimedByMe = o.claimed_by === user.id;
+          const claimedName = staffName(o.claimed_by);
+          const confirmedName = staffName(o.confirmed_by);
+          const deliveredName = staffName(o.delivered_by);
+          const cancelledName = staffName(o.cancelled_by);
 
           return (
             <li
@@ -271,15 +329,66 @@ export default async function PedidosAdminPage({
                     minute: "2-digit",
                   })}
                 </span>
-                <span className={isDelayed ? "font-bold text-red-700" : ""}>
-                  Espera: {waitMin} min {isDelayed ? "(Atenção: aguardando há mais de 5 min)" : ""}
-                </span>
-                {o.status === "EM_VERIFICACAO" && (
-                  <span className="font-semibold text-ocean">
-                    {claimedByMe ? "Em verificação por você" : "Em verificação por atendente"}
+                {o.status !== "ENTREGUE" && o.status !== "CANCELADO" && (
+                  <span className={isDelayed ? "font-bold text-red-700" : ""}>
+                    Espera: {waitMin} min {isDelayed ? "(Atenção: aguardando há mais de 5 min)" : ""}
                   </span>
                 )}
               </div>
+
+              {/* Bloco de Controle Interno: Funcionários Responsáveis por cada tarefa do pedido */}
+              {(claimedName ||
+                confirmedName ||
+                deliveredName ||
+                cancelledName ||
+                (o.production_tasks && o.production_tasks.length > 0)) && (
+                <div className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-sky-50/60 p-2.5 text-xs text-slate-800">
+                  <strong className="text-[11px] uppercase tracking-wider text-ocean">
+                    Controle de Equipe (Quem assumiu):
+                  </strong>
+                  {claimedName && (
+                    <span>
+                      🔍 <strong>Verificação na mesa:</strong> {claimedName}
+                      {o.claimed_by === user.id ? " (você)" : ""}
+                    </span>
+                  )}
+                  {confirmedName && (
+                    <span>
+                      ✅ <strong>Confirmado na mesa por:</strong> {confirmedName}
+                      {o.confirmed_at
+                        ? ` às ${new Date(o.confirmed_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                        : ""}
+                    </span>
+                  )}
+                  {o.production_tasks?.map((pt) => {
+                    const stName = staffName(pt.started_by);
+                    const cpName = staffName(pt.completed_by);
+                    if (!stName && !cpName) return null;
+                    return (
+                      <span key={pt.id}>
+                        {pt.sector === "bar" ? "🍹" : "🍳"}{" "}
+                        <strong>{pt.sector === "bar" ? "Bar" : "Cozinha"}:</strong>{" "}
+                        {stName ? `Iniciado por ${stName}` : ""}
+                        {stName && cpName ? " • " : ""}
+                        {cpName ? `Concluído por ${cpName}` : ""}
+                      </span>
+                    );
+                  })}
+                  {deliveredName && (
+                    <span>
+                      🍽️ <strong>Entregue na mesa por:</strong> {deliveredName}
+                      {o.delivered_at
+                        ? ` às ${new Date(o.delivered_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                        : ""}
+                    </span>
+                  )}
+                  {cancelledName && (
+                    <span className="text-red-800">
+                      ❌ <strong>Cancelado por:</strong> {cancelledName}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <ul className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3 text-sm">
                 {o.order_items.map((it) => (
@@ -395,6 +504,47 @@ export default async function PedidosAdminPage({
           );
         })}
       </ul>
+
+      {/* Histórico Recente de Idas nas Mesas (Chamados Concluídos/Cancelados) */}
+      {recentCalls.length > 0 && (
+        <details className="card mt-2">
+          <summary className="cursor-pointer font-bold text-ocean">
+            Histórico Recente de Idas nas Mesas / Chamados ({recentCalls.length})
+          </summary>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {recentCalls.map((rc) => {
+              const hName = staffName(rc.handled_by);
+              const rName = staffName(rc.resolved_by);
+              return (
+                <li key={rc.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <strong className="text-sm text-ocean">
+                      {rc.dining_tables?.display_name ?? "Mesa"} — {CALL_REASON_LABEL[rc.reason] ?? rc.reason}
+                    </strong>
+                    <span className="chip">{rc.status === "ATENDIDA" ? "Atendido" : "Cancelado"}</span>
+                  </div>
+                  {rc.details && <p className="mt-1 text-slate-700">Obs.: {rc.details}</p>}
+                  <div className="mt-1.5 flex flex-col gap-0.5 text-slate-700">
+                    {hName && (
+                      <span>
+                        👤 <strong>Assumido por:</strong> {hName}
+                      </span>
+                    )}
+                    {rName && (
+                      <span>
+                        ✅ <strong>Finalizado por:</strong> {rName}
+                        {rc.resolved_at
+                          ? ` às ${new Date(rc.resolved_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                          : ""}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
     </main>
   );
 }
